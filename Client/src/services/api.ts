@@ -20,13 +20,10 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-// Handle 401 — redirect to sign-in
+// Handle errors — just reject, let components handle gracefully
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      window.location.href = "/login";
-    }
     return Promise.reject(error);
   }
 );

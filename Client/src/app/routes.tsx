@@ -28,8 +28,8 @@ export const router = createBrowserRouter([
       { path: "products/:id", Component: ProductDetail },
       { path: "search", Component: SearchResults },
       { path: "cart", Component: Cart },
-      { path: "login/*", Component: Login },
-      { path: "signup/*", Component: Signup },
+      { path: "login", Component: Login },
+      { path: "signup", Component: Signup },
       { path: "auth/google/callback", Component: GoogleCallback },
       // Protected user routes
       {
