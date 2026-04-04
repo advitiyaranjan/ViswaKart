@@ -9,6 +9,7 @@ import Cart from "./pages/Cart";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import GoogleCallback from "./pages/GoogleCallback";
+import Checkout from "./pages/Checkout";
 import Account from "./pages/Account";
 import AdminDashboard from "./pages/admin/Dashboard";
 import ProductManagement from "./pages/admin/ProductManagement";
@@ -36,6 +37,7 @@ export const router = createBrowserRouter([
         Component: ProtectedRoute,
         children: [
           { path: "account", Component: Account },
+          { path: "checkout", Component: Checkout },
         ],
       },
     ],

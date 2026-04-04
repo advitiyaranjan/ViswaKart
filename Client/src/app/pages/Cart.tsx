@@ -660,7 +660,24 @@ export default function Cart() {
 
               <Button variant="primary" className="w-full" size="lg"
                 disabled={!canCheckout}
-                onClick={() => canCheckout && navigate("/checkout")}
+                onClick={() => {
+                  if (!canCheckout) return;
+                  navigate("/checkout", {
+                    state: {
+                      selectedAddr: selectedAddr ?? (guestAddrSaved ? guestAddr : null),
+                      shippingCost,
+                      couponDiscount,
+                      total,
+                      breakdown: {
+                        itemsPrice: subtotal,
+                        shippingPrice: shippingCost,
+                        taxPrice: tax,
+                        couponDiscount,
+                        totalPrice: total,
+                      },
+                    },
+                  });
+                }}
                 title={!canCheckout ? (user ? "Please select a delivery address" : "Please enter a delivery address") : ""}
               >
                 Checkout
