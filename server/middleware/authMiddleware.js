@@ -1,4 +1,4 @@
-const { createClerkClient } = require("@clerk/backend");
+const { createClerkClient, verifyToken } = require("@clerk/backend");
 const User = require("../models/User");
 
 const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
@@ -13,8 +13,8 @@ exports.protect = async (req, res, next) => {
   const token = authHeader.split(" ")[1];
 
   try {
-    // verifyToken validates signature via CLERK_SECRET_KEY — no azp restriction needed
-    const payload = await clerk.verifyToken(token);
+    // Use standalone verifyToken with secretKey for reliable JWKS verification
+    const payload = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY });
     const clerkUserId = payload.sub;
 
     // Find or auto-create the user record in MongoDB keyed by Clerk user ID
