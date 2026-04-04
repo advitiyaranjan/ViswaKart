@@ -2,6 +2,9 @@ import { useState, useEffect } from "react";
 import { Plus, Search, Edit, Trash2, FolderTree } from "lucide-react";
 import { Button } from "../../components/Button";
 import { categoryService } from "../../../services/productService";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { categorySchema, CategoryFormValues } from "../../../lib/validationSchemas";
 
 interface Category {
   _id: string;
@@ -15,8 +18,16 @@ export default function CategoryManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  const [form, setForm] = useState({ name: "", description: "" });
   const [saving, setSaving] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<CategoryFormValues>({
+    resolver: zodResolver(categorySchema),
+  });
 
   const loadCategories = async () => {
     const res = await categoryService.getCategories();
@@ -31,13 +42,13 @@ export default function CategoryManagement() {
 
   const openAdd = () => {
     setEditingCategory(null);
-    setForm({ name: "", description: "" });
+    reset({ name: "", description: "" });
     setShowModal(true);
   };
 
   const openEdit = (cat: Category) => {
     setEditingCategory(cat);
-    setForm({ name: cat.name, description: cat.description || "" });
+    reset({ name: cat.name, description: cat.description || "" });
     setShowModal(true);
   };
 
@@ -47,14 +58,13 @@ export default function CategoryManagement() {
     setCategories((prev) => prev.filter((c) => c._id !== id));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSave = async (data: CategoryFormValues) => {
     setSaving(true);
     try {
       if (editingCategory) {
-        await categoryService.updateCategory(editingCategory._id, form);
+        await categoryService.updateCategory(editingCategory._id, data);
       } else {
-        await categoryService.createCategory(form);
+        await categoryService.createCategory(data);
       }
       setShowModal(false);
       loadCategories();
@@ -135,17 +145,16 @@ export default function CategoryManagement() {
               </h2>
             </div>
 
-            <form className="p-6 space-y-6" onSubmit={handleSubmit}>
+            <form className="p-6 space-y-6" onSubmit={handleSubmit(handleSave)}>
               <div>
                 <label className="block mb-2 font-medium">Category Name</label>
                 <input
                   type="text"
-                  required
                   placeholder="Enter category name"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="w-full px-4 py-2 bg-input-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
+                  {...register("name")}
+                  className={`w-full px-4 py-2 bg-input-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring ${errors.name ? "border-destructive" : "border-input"}`}
                 />
+                {errors.name && <p className="text-destructive text-xs mt-1">{errors.name.message}</p>}
               </div>
 
               <div>
@@ -153,8 +162,7 @@ export default function CategoryManagement() {
                 <textarea
                   rows={3}
                   placeholder="Enter category description"
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  {...register("description")}
                   className="w-full px-4 py-2 bg-input-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring resize-none"
                 />
               </div>
