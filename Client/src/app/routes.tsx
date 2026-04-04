@@ -35,7 +35,7 @@ export const router = createBrowserRouter([
       {
         Component: ProtectedRoute,
         children: [
-          { path: "account/*", Component: Account },
+          { path: "account", Component: Account },
         ],
       },
     ],
