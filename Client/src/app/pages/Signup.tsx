@@ -4,7 +4,8 @@ export default function Signup() {
   return (
     <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-slate-50 px-4">
       <SignUp
-        routing="hash"
+        routing="path"
+        path="/signup"
         forceRedirectUrl="/"
         signInUrl="/login"
         appearance={{
