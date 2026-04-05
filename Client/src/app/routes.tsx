@@ -11,7 +11,6 @@ import Signup from "./pages/Signup";
 import GoogleCallback from "./pages/GoogleCallback";
 import Checkout from "./pages/Checkout";
 import BuyNow from "./pages/BuyNow";
-import Account from "./pages/Account";
 import AdminDashboard from "./pages/admin/Dashboard";
 import ProductManagement from "./pages/admin/ProductManagement";
 import CategoryManagement from "./pages/admin/CategoryManagement";
@@ -39,7 +38,6 @@ export const router = createBrowserRouter([
       {
         Component: ProtectedRoute,
         children: [
-          { path: "account", Component: Account },
           { path: "checkout", Component: Checkout },
           { path: "buy-now", Component: BuyNow },
         ],
