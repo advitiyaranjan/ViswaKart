@@ -3,6 +3,7 @@ import { Search, ShoppingCart, ShoppingBag, User, Menu, X, LayoutDashboard, Arro
 import { Button } from "../components/Button";
 import { useState, useEffect, useRef } from "react";
 import { useCart } from "../../context/CartContext";
+import { useAuth } from "../../context/AuthContext";
 import { categoryService, productService } from "../../services/productService";
 import { UserButton, SignInButton, useUser } from "@clerk/react";
 import { MapPin, ShoppingBag as OrdersIcon } from "lucide-react";
