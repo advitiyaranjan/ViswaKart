@@ -185,7 +185,7 @@ export default function UserLayout() {
                       </Button>
                     </Link>
                   )}
-                  <UserButton afterSignOutUrl="/" userProfileMode="modal" appearance={{ elements: { userButtonPopoverFooter: { display: "none" } } }}>
+                  <UserButton afterSignOutUrl="/" userProfileMode="modal" appearance={{ elements: { userButtonPopoverFooter: { display: "none" } } }} userProfileProps={{ appearance: { elements: { footer: { display: "none" } } } }}>
                     <UserButton.UserProfilePage
                       label="My Addresses"
                       url="addresses"

@@ -6,3 +6,5 @@
 [data-localization-key="badge__dev"] { display: none !important; }
 .cl-internal-b3fm6y { display: none !important; }
 .cl-userButtonPopoverFooter { display: none !important; }
+.cl-footer { display: none !important; }
+.cl-userProfile-root .cl-footer { display: none !important; }
