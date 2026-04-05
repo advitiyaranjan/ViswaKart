@@ -1,5 +1,7 @@
 const Order = require("../models/Order");
 const Product = require("../models/Product");
+const User = require("../models/User");
+const { sendOrderConfirmationEmail } = require("../utils/email");
 
 // @desc    Create new order
 // @route   POST /api/orders
@@ -43,6 +45,13 @@ exports.createOrder = async (req, res) => {
     taxPrice,
     totalPrice,
   });
+
+  // Send order confirmation email (non-blocking)
+  User.findById(req.user.id).lean().then((user) => {
+    if (user?.email) {
+      sendOrderConfirmationEmail(user.email, user.name || "Customer", order).catch(() => {});
+    }
+  }).catch(() => {});
 
   res.status(201).json({ success: true, order });
 };
