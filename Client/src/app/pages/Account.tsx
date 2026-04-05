@@ -1,5 +1,6 @@
 import React from "react";
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router";
 import { User, MapPin, ShoppingBag, HelpCircle, Edit2, Trash2, Plus, Eye, EyeOff, Check, X, ChevronDown, ChevronUp, Package, Truck, CheckCircle2, Clock, XCircle, Star } from "lucide-react";
 import { authService, AddressData } from "../../services/authService";
 import { orderService } from "../../services/orderService";
@@ -162,7 +163,11 @@ function AddressForm({ initial = {}, onSave, onCancel, saving }: AddressFormProp
 
 export default function Account() {
   const { user: authUser, updateUser } = useAuth() as any;
-  const [activeTab, setActiveTab] = useState("profile");
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(() => {
+    const t = searchParams.get("tab");
+    return ["profile", "addresses", "orders", "help"].includes(t ?? "") ? t! : "profile";
+  });
 
   // Profile form
   const [profileName, setProfileName] = useState(authUser?.name ?? "");

@@ -6,6 +6,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useCart } from "../../context/CartContext";
 import { categoryService, productService } from "../../services/productService";
 import { UserButton, SignInButton, useUser } from "@clerk/react";
+import { MapPin, ShoppingBag as OrdersIcon } from "lucide-react";
 
 interface Category { _id: string; name: string; slug: string; }
 
@@ -159,12 +160,18 @@ export default function UserLayout() {
                       </Button>
                     </Link>
                   )}
-                  <Link to="/account">
-                    <Button variant="ghost" size="md" title="My Account">
-                      <User className="w-5 h-5" />
-                    </Button>
-                  </Link>
-                  <UserButton afterSignOutUrl="/" />
+                  <UserButton afterSignOutUrl="/">
+                    <UserButton.UserProfileLink
+                      label="My Addresses"
+                      url="/account?tab=addresses"
+                      labelIcon={<MapPin className="w-4 h-4" />}
+                    />
+                    <UserButton.UserProfileLink
+                      label="My Orders"
+                      url="/account?tab=orders"
+                      labelIcon={<OrdersIcon className="w-4 h-4" />}
+                    />
+                  </UserButton>
                   <span className="hidden md:block text-sm font-medium text-muted-foreground">
                     {user?.name.split(" ")[0]}
                   </span>
