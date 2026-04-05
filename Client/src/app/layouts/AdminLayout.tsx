@@ -9,7 +9,8 @@ import {
   X,
   LogOut,
   ArrowLeft,
-  Store
+  Store,
+  MessageCircle,
 } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "../../context/AuthContext";
@@ -21,6 +22,7 @@ const navItems = [
   { path: "/admin/categories", label: "Categories", icon: FolderTree },
   { path: "/admin/orders", label: "Orders", icon: ShoppingBag },
   { path: "/admin/users", label: "Users", icon: Users },
+  { path: "/admin/support", label: "Support", icon: MessageCircle },
 ];
 
 export default function AdminLayout() {

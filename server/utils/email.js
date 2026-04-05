@@ -83,7 +83,48 @@ async function sendNewsletterWelcomeEmail(to) {
   if (error) console.error("📧  Newsletter email error:", error);
 }
 
-module.exports = { sendOtpEmail, sendNewsletterWelcomeEmail, sendWelcomeEmail, sendLoginAlertEmail, sendOrderConfirmationEmail };
+/**
+ * Sends a support reply email to the user.
+ * @param {string} to      - user email
+ * @param {string} name    - user name
+ * @param {string} subject - original subject
+ * @param {string} reply   - admin reply message
+ */
+async function sendSupportReplyEmail(to, name, subject, reply) {
+  const { error } = await resend.emails.send({
+    from: FROM,
+    to,
+    subject: `Re: ${subject} — ViswaKart Support`,
+    html: `
+      ${preheader(`ViswaKart Support replied to your message: "${subject}"`)}
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#f8fafc;border-radius:12px;">
+        <div style="text-align:center;margin-bottom:24px;">
+          <img src="${LOGO}" alt="ViswaKart" style="height:56px;width:auto;object-fit:contain;" />
+        </div>
+        <div style="background:#fff;border-radius:10px;padding:28px;border:1px solid #e2e8f0;">
+          <h2 style="color:#0f766e;margin-top:0;">We've replied to your message 💬</h2>
+          <p style="color:#475569;line-height:1.6;">Hi <strong>${name}</strong>, our support team has responded to your enquiry.</p>
+          <div style="background:#f1f5f9;border-radius:8px;padding:4px 16px;margin:16px 0;">
+            <p style="color:#64748b;font-size:13px;margin:8px 0;"><strong>Subject:</strong> ${subject}</p>
+          </div>
+          <div style="background:#f0fdf4;border-left:4px solid #0f766e;border-radius:6px;padding:16px;margin:16px 0;color:#334155;line-height:1.7;font-size:15px;">
+            ${reply.replace(/\n/g, "<br/>")}
+          </div>
+          <p style="color:#64748b;font-size:13px;">If you have further questions, feel free to contact us again through the Help & Support section in your account.</p>
+          <div style="text-align:center;margin-top:20px;">
+            <a href="${SITE}" style="background:#0f766e;color:#fff;text-decoration:none;padding:10px 24px;border-radius:8px;font-weight:700;font-size:14px;display:inline-block;">
+              Visit ViswaKart
+            </a>
+          </div>
+        </div>
+        <p style="color:#94a3b8;font-size:12px;text-align:center;margin-top:20px;">ViswaKart Support · ${SITE}</p>
+      </div>
+    `,
+  });
+  if (error) console.error("📧  Support reply email error:", error);
+}
+
+module.exports = { sendOtpEmail, sendNewsletterWelcomeEmail, sendWelcomeEmail, sendLoginAlertEmail, sendOrderConfirmationEmail, sendSupportReplyEmail };
 
 /**
  * Sends a welcome email after user signs up.

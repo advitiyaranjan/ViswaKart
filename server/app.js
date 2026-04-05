@@ -16,6 +16,7 @@ const userRoutes = require("./routes/userRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const webhookRoutes = require("./routes/webhookRoutes");
 const newsletterRoutes = require("./routes/newsletterRoutes");
+const supportRoutes = require("./routes/supportRoutes");
 
 const app = express();
 
@@ -62,6 +63,7 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/newsletter", newsletterRoutes);
+app.use("/api/support", supportRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {

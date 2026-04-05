@@ -13,6 +13,7 @@ import {
   Truck,
 } from "lucide-react";
 import { Button } from "../../components/Button";
+import api from "../../../services/api";
 
 interface FAQ {
   q: string;
@@ -67,16 +68,23 @@ export default function HelpSupportPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [contactForm, setContactForm] = useState({ subject: "", message: "" });
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!contactForm.subject.trim() || !contactForm.message.trim()) return;
-    // In a real app this would call an API
-    setSubmitted(true);
-    setTimeout(() => {
-      setSubmitted(false);
+    setSubmitting(true);
+    setError("");
+    try {
+      await api.post("/support", contactForm);
+      setSubmitted(true);
       setContactForm({ subject: "", message: "" });
-    }, 3000);
+    } catch {
+      setError("Failed to send message. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -200,13 +208,14 @@ export default function HelpSupportPage() {
                 value={contactForm.message}
                 onChange={(e) => setContactForm((f) => ({ ...f, message: e.target.value }))}
               />
+              {error && <p className="text-xs text-red-500">{error}</p>}
               <Button
                 type="submit"
                 variant="primary"
                 size="sm"
-                disabled={!contactForm.subject.trim() || !contactForm.message.trim()}
+                disabled={!contactForm.subject.trim() || !contactForm.message.trim() || submitting}
               >
-                Send Message
+                {submitting ? "Sending…" : "Send Message"}
               </Button>
             </form>
           )}
