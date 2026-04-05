@@ -1,7 +1,8 @@
 import { Link } from "react-router";
-import { Star, ShoppingCart, Check } from "lucide-react";
+import { Star, ShoppingCart, Check, Heart } from "lucide-react";
 import { Button } from "./Button";
 import { useCart } from "../../context/CartContext";
+import { useWishlist } from "../../context/WishlistContext";
 import { useState } from "react";
 
 interface ProductCardProps {
@@ -32,7 +33,13 @@ export function ProductCard({
 }: ProductCardProps) {
   const isInStock = inStock !== undefined ? inStock : stock > 0;
   const { addToCart } = useCart();
+  const { isWishlisted, toggleWishlist } = useWishlist();
   const [added, setAdded] = useState(false);
+
+  const handleWishlist = (e: React.MouseEvent) => {
+    e.preventDefault();
+    toggleWishlist(String(id));
+  };
   // Deterministic discount % (14–80) seeded from product id
   function seededDiscount(seed: string | number) {
     const s = String(seed);
@@ -83,6 +90,13 @@ export function ProductCard({
               {discountPct}% off
             </div>
           )}
+          <button
+            onClick={handleWishlist}
+            className="absolute top-2 right-2 p-1.5 rounded-full bg-white/80 hover:bg-white shadow transition-all duration-200 z-10"
+            aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
+          >
+            <Heart className={`w-4 h-4 transition-colors ${isWishlisted(String(id)) ? "fill-rose-500 text-rose-500" : "text-slate-400 hover:text-rose-400"}`} />
+          </button>
           {!isInStock && (
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
               <span className="bg-white text-foreground px-4 py-2 rounded-lg font-semibold">

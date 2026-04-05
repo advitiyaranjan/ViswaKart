@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { Heart, ShoppingCart, Trash2, Package } from "lucide-react";
 import { productService } from "../../services/productService";
 import { useCart } from "../../context/CartContext";
+import { useWishlist } from "../../context/WishlistContext";
 import { Button } from "../components/Button";
 
 interface Product {
@@ -22,21 +23,10 @@ function seededDiscount(id: string) {
 
 export default function Wishlist() {
   const { addToCart } = useCart();
-  const [wishlistIds, setWishlistIds] = useState<string[]>(() =>
-    JSON.parse(localStorage.getItem("wishlist") ?? "[]")
-  );
+  const { wishlist: wishlistIds, toggleWishlist, loading: wishlistLoading } = useWishlist();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
-
-  // Listen for localStorage changes from other tabs
-  useEffect(() => {
-    const onStorage = () => {
-      setWishlistIds(JSON.parse(localStorage.getItem("wishlist") ?? "[]"));
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
 
   useEffect(() => {
     if (wishlistIds.length === 0) { setProducts([]); return; }
@@ -46,12 +36,12 @@ export default function Wishlist() {
       .finally(() => setLoading(false));
   }, [wishlistIds]);
 
-  const remove = (id: string) => {
-    const next = wishlistIds.filter((x) => x !== id);
-    localStorage.setItem("wishlist", JSON.stringify(next));
-    setWishlistIds(next);
-    setProducts((p) => p.filter((x) => x._id !== id));
-  };
+  // Keep products in sync when an item is removed
+  useEffect(() => {
+    setProducts((p) => p.filter((x) => wishlistIds.includes(x._id)));
+  }, [wishlistIds]);
+
+  const remove = (id: string) => toggleWishlist(id);
 
   const handleAddToCart = (product: Product) => {
     addToCart({ _id: product._id, name: product.name, price: product.price, image: product.images[0], stock: product.stock });
@@ -71,7 +61,7 @@ export default function Wishlist() {
         )}
       </div>
 
-      {loading ? (
+      {(loading || wishlistLoading) ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {wishlistIds.map((id) => (
             <div key={id} className="bg-white rounded-2xl border border-border overflow-hidden animate-pulse">
