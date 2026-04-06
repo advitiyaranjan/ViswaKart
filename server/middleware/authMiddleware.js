@@ -13,7 +13,11 @@ exports.protect = async (req, res, next) => {
   const token = authHeader.split(" ")[1];
 
   try {
-    const payload = await clerk.verifyToken(token);
+    const payload = await clerk.verifyToken(token, {
+      authorizedParties: process.env.CLIENT_URL
+        ? process.env.CLIENT_URL.split(",").map((o) => o.trim())
+        : ["http://localhost:5173", "http://localhost:5174"],
+    });
     const clerkUserId = payload.sub;
 
     // Find or auto-create the user record in MongoDB keyed by Clerk user ID
