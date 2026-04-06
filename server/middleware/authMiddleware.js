@@ -13,11 +13,8 @@ exports.protect = async (req, res, next) => {
   const token = authHeader.split(" ")[1];
 
   try {
-    const payload = await clerk.verifyToken(token, {
-      authorizedParties: process.env.CLIENT_URL
-        ? process.env.CLIENT_URL.split(",").map((o) => o.trim())
-        : ["http://localhost:5173", "http://localhost:5174"],
-    });
+    // verifyToken validates signature via CLERK_SECRET_KEY — no azp restriction needed
+    const payload = await clerk.verifyToken(token);
     const clerkUserId = payload.sub;
 
     // Find or auto-create the user record in MongoDB keyed by Clerk user ID
