@@ -22,6 +22,10 @@ interface Product {
   numReviews: number;
   category: { name: string };
   stock: number;
+  discount?: number;
+  seller?: string;
+  sellerEmail?: string;
+  originalPrice?: number;
 }
 
 export default function Homepage() {
@@ -174,35 +178,63 @@ export default function Homepage() {
               transition={{ delay: 0.1 }}
               className="hidden lg:grid grid-cols-2 gap-4"
             >
-              {featuredProducts.slice(0, 4).map((product, i) => (
-                <motion.div
-                  key={product._id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.15 + i * 0.07 }}
-                >
-                  <Link to={`/products/${product._id}`}>
-                    <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-xl p-3 hover:bg-white/15 transition-colors group">
-                      <div className="aspect-video rounded-lg overflow-hidden bg-white/5 mb-2 relative">
-                        <img
-                          src={product.images[0]}
-                          alt={product.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          onError={(e) => { (e.target as HTMLImageElement).src = "/placeholder.png"; }}
-                        />
-        <span className="absolute top-1.5 left-1.5 bg-green-500 text-white text-xs font-bold px-1.5 py-0.5 rounded">
-                          {seededDiscount(product._id)}% off
-                        </span>
+              {featuredProducts.slice(0, 4).map((product, i) => {
+                const discountPctHero = (product.discount !== undefined && product.discount !== null)
+                  ? Math.round(Number(product.discount))
+                  : (product.originalPrice !== undefined && product.originalPrice !== null)
+                    ? Math.round(((Number(product.originalPrice) - Number(product.price)) / Number(product.originalPrice)) * 100)
+                    : (product.seller || product.sellerEmail ? 0 : seededDiscount(product._id));
+
+                // Determine MRP and final display price.
+                let mrpHero = 0;
+                let displayPrice = 0;
+                if (product.originalPrice !== undefined && product.originalPrice !== null) {
+                  mrpHero = Number(product.originalPrice);
+                  displayPrice = discountPctHero > 0 ? Number((mrpHero * (1 - discountPctHero / 100)).toFixed(2)) : mrpHero;
+                } else if ((product.discount !== undefined && product.discount !== null) || product.seller || product.sellerEmail) {
+                  // Seller-provided listing: treat stored `price` as MRP
+                  mrpHero = Number(product.price || 0);
+                  displayPrice = discountPctHero > 0 ? Number((mrpHero * (1 - discountPctHero / 100)).toFixed(2)) : mrpHero;
+                } else {
+                  // Public/admin listing: stored `price` is the final price
+                  displayPrice = Number(product.price) || 0;
+                  mrpHero = discountPctHero > 0 ? Number((displayPrice / (1 - discountPctHero / 100)).toFixed(2)) : displayPrice;
+                }
+
+                return (
+                  <motion.div
+                    key={product._id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.15 + i * 0.07 }}
+                  >
+                    <Link to={`/products/${product._id}`}>
+                      <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-xl p-3 hover:bg-white/15 transition-colors group">
+                        <div className="aspect-video rounded-lg overflow-hidden bg-white/5 mb-2 relative">
+                          <img
+                            src={product.images[0]}
+                            alt={product.name}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            onError={(e) => { (e.target as HTMLImageElement).src = "/placeholder.png"; }}
+                          />
+                          {discountPctHero > 0 && (
+                            <span className="absolute top-1.5 left-1.5 bg-green-500 text-white text-xs font-bold px-1.5 py-0.5 rounded">
+                              {discountPctHero}% off
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-white text-xs font-semibold truncate">{product.name}</p>
+                        <div className="flex items-baseline gap-1.5">
+                          <p className="text-amber-400 text-sm font-bold">{formatCurrency(displayPrice)}</p>
+                          {mrpHero > displayPrice && (
+                            <p className="text-white/40 text-xs line-through">{formatCurrency(mrpHero)}</p>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-white text-xs font-semibold truncate">{product.name}</p>
-                      <div className="flex items-baseline gap-1.5">
-                        <p className="text-amber-400 text-sm font-bold">{formatCurrency(product.price)}</p>
-                          <p className="text-white/40 text-xs line-through">{formatCurrency(product.price / (1 - seededDiscount(product._id) / 100))}</p>
-                      </div>
-                    </div>
-                  </Link>
-                </motion.div>
-              ))}
+                    </Link>
+                  </motion.div>
+                );
+              })}
             </motion.div>
           </div>
         </div>
@@ -261,6 +293,9 @@ export default function Homepage() {
                   id={product._id}
                   name={product.name}
                   price={product.price}
+                  discount={product.discount}
+                  seller={product.seller}
+                  sellerEmail={product.sellerEmail}
                   image={product.images[0]}
                   rating={product.ratings}
                   reviews={product.numReviews}
@@ -306,6 +341,9 @@ export default function Homepage() {
                     id={product._id}
                     name={product.name}
                     price={product.price}
+                    discount={product.discount}
+                    seller={product.seller}
+                    sellerEmail={product.sellerEmail}
                     image={product.images[0]}
                     rating={product.ratings}
                     reviews={product.numReviews}

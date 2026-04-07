@@ -14,6 +14,10 @@ interface Product {
   images: string[];
   stock: number;
   category: { name: string };
+  discount?: number;
+  originalPrice?: number;
+  seller?: string;
+  sellerEmail?: string;
 }
 
 function seededDiscount(id: string) {
@@ -45,7 +49,7 @@ export default function Wishlist() {
   const remove = (id: string) => toggleWishlist(id);
 
   const handleAddToCart = (product: Product) => {
-    addToCart({ _id: product._id, name: product.name, price: product.price, image: product.images[0], stock: product.stock });
+    addToCart({ _id: product._id, name: product.name, price: product.price, image: product.images[0], stock: product.stock, originalPrice: (product as any).originalPrice, discount: (product as any).discount });
     setAddedIds((prev) => new Set(prev).add(product._id));
     setTimeout(() => setAddedIds((prev) => { const n = new Set(prev); n.delete(product._id); return n; }), 1500);
   };
@@ -91,8 +95,15 @@ export default function Wishlist() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {products.map((product) => {
-            const discPct = seededDiscount(product._id);
-            const mrp = product.price / (1 - discPct / 100);
+            const discPct = (product as any).discount !== undefined && (product as any).discount !== null
+              ? Number((product as any).discount)
+              : (product.originalPrice !== undefined && product.originalPrice !== null)
+                ? Math.round(((Number(product.originalPrice) - Number(product.price)) / Number(product.originalPrice)) * 100)
+                : (product.seller || product.sellerEmail ? 0 : seededDiscount(product._id));
+
+            const mrp = (product.originalPrice !== undefined && product.originalPrice !== null)
+              ? Number(product.originalPrice)
+              : (discPct > 0 ? Number((Number(product.price) / (1 - discPct / 100)).toFixed(2)) : Number(product.price));
             return (
               <div key={product._id} className="bg-white rounded-2xl border border-border overflow-hidden shadow-sm hover:shadow-md transition-shadow group">
                 {/* Image */}
@@ -132,8 +143,26 @@ export default function Wishlist() {
                     </h3>
                   </Link>
                   <div className="flex items-baseline gap-2 mb-3">
-                    <span className="text-lg font-extrabold">{formatCurrency(product.price)}</span>
-                    <span className="text-xs text-muted-foreground line-through">{formatCurrency(mrp)}</span>
+                    {(() => {
+                      const explicitDiscount = (product as any).discount !== undefined && (product as any).discount !== null;
+                      let displayPrice = 0;
+                      if (product.originalPrice !== undefined && product.originalPrice !== null) {
+                        displayPrice = Number(((Number(product.originalPrice) * (1 - (discPct / 100))).toFixed(2)));
+                      } else if (explicitDiscount) {
+                        const mrpCandidate = Number(product.price || 0);
+                        displayPrice = Number((mrpCandidate * (1 - discPct / 100)).toFixed(2));
+                      } else {
+                        displayPrice = Number(product.price || 0);
+                      }
+                      return (
+                        <>
+                          <span className="text-lg font-extrabold">{formatCurrency(displayPrice)}</span>
+                          {mrp > displayPrice && (
+                            <span className="text-xs text-muted-foreground line-through">{formatCurrency(mrp)}</span>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                   <Button
                     variant="primary"

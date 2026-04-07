@@ -51,6 +51,11 @@ export const productSchema = z.object({
     .max(100_000, "Stock value is too high"),
   description: z.string().optional(),
   images: z.array(z.string()).optional(),
+  discount: z
+    .number({ invalid_type_error: "Discount must be a number" })
+    .min(0, "Discount cannot be negative")
+    .max(100, "Discount cannot exceed 100")
+    .optional(),
 });
 
 export type ProductFormValues = z.infer<typeof productSchema>;

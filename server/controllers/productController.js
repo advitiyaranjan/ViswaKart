@@ -214,6 +214,42 @@ exports.createProduct = async (req, res) => {
     }
   }
 
+  // Normalize discount and price semantics.
+  // For non-admin creators (sellers), treat the supplied `price` as the product's MRP (originalPrice)
+  // and compute the stored `price` as the discounted selling price (if a discount percent is provided).
+  try {
+    let discountPct = 0;
+    if (payload.discount !== undefined && payload.discount !== null) {
+      discountPct = Number(payload.discount) || 0;
+      if (!Number.isFinite(discountPct)) discountPct = 0;
+      discountPct = Math.max(0, Math.min(100, discountPct));
+      payload.discount = discountPct;
+    } else {
+      payload.discount = 0;
+    }
+
+    const inputPrice = payload.price !== undefined ? Number(payload.price) : undefined;
+    if (req.user && req.user.role !== 'admin') {
+      if (inputPrice !== undefined && !Number.isNaN(inputPrice)) {
+        payload.originalPrice = inputPrice;
+        payload.price = discountPct > 0 ? parseFloat((inputPrice * (1 - discountPct / 100)).toFixed(2)) : inputPrice;
+      } else {
+        // ensure originalPrice exists
+        if (payload.originalPrice === undefined && payload.price !== undefined) payload.originalPrice = Number(payload.price);
+      }
+    } else {
+      // Admin-created products: ensure originalPrice is set if missing
+      if (payload.originalPrice === undefined && payload.price !== undefined) payload.originalPrice = Number(payload.price);
+      // If admin provided both originalPrice and discount but left price unchanged, compute final price for consistency
+      if (payload.originalPrice !== undefined && payload.discount > 0 && (req.body.price === undefined)) {
+        const op = Number(payload.originalPrice || 0);
+        payload.price = parseFloat((op * (1 - payload.discount / 100)).toFixed(2));
+      }
+    }
+  } catch (e) {
+    // non-fatal: fall back to raw payload values
+  }
+
   const product = await Product.create(payload);
   console.log('[CREATE_PRODUCT] created product', { id: product._id, seller: product.seller, isActive: product.isActive });
   await product.populate("category", "name slug");
@@ -244,6 +280,38 @@ exports.updateProduct = async (req, res) => {
     if (req.body && req.body.sellerMobile) product.sellerMobile = String(req.body.sellerMobile).trim().replace(/\D/g, "");
     if (req.body && req.body.sellerHostelNumber) product.sellerHostelNumber = String(req.body.sellerHostelNumber).trim();
     if (req.body && req.body.sellerRoomNumber) product.sellerRoomNumber = String(req.body.sellerRoomNumber).trim();
+  } catch (e) {
+    // non-fatal
+  }
+
+  // Normalize discount and price semantics after applying updates.
+  try {
+    let discountPct = Number(product.discount || 0);
+    if (!Number.isFinite(discountPct)) discountPct = 0;
+    discountPct = Math.max(0, Math.min(100, discountPct));
+    product.discount = discountPct;
+
+    if (req.user && req.user.role !== 'admin') {
+      // Sellers: treat the supplied `price` as MRP (originalPrice)
+      if (req.body.price !== undefined) {
+        const inputPrice = Number(req.body.price);
+        if (!Number.isNaN(inputPrice)) product.originalPrice = inputPrice;
+      }
+      if (!product.originalPrice) product.originalPrice = Number(product.price || 0);
+      if (product.originalPrice) {
+        product.price = parseFloat((Number(product.originalPrice) * (1 - discountPct / 100)).toFixed(2));
+      }
+    } else {
+      // Admin: prefer explicit originalPrice; if present recompute final price
+      if (product.originalPrice) {
+        product.price = parseFloat((Number(product.originalPrice) * (1 - discountPct / 100)).toFixed(2));
+      } else if (req.body.originalPrice !== undefined && req.body.discount !== undefined) {
+        const op = Number(product.originalPrice || 0);
+        product.price = parseFloat((op * (1 - discountPct / 100)).toFixed(2));
+      } else if (req.body.price !== undefined && !product.originalPrice) {
+        product.originalPrice = Number(product.price || 0);
+      }
+    }
   } catch (e) {
     // non-fatal
   }

@@ -22,34 +22,70 @@ exports.createOrder = async (req, res) => {
   const dbProducts = await Product.find({ _id: { $in: productIds } }).lean();
   const productMap = Object.fromEntries(dbProducts.map((p) => [p._id.toString(), p]));
 
-  // Preload seller user records for name fallbacks
+  // Preload seller user records for name fallbacks.
+  // Also preload users referenced by product.sellerEmail so we can link email-only sellers.
   const sellerIds = Array.from(new Set(dbProducts.map((p) => (p.seller ? String(p.seller) : null)).filter(Boolean)));
+  const sellerEmails = Array.from(new Set(dbProducts.map((p) => (p.sellerEmail ? String(p.sellerEmail).toLowerCase() : null)).filter(Boolean)));
   let sellerMap = {};
   if (sellerIds.length > 0) {
     const sellers = await User.find({ _id: { $in: sellerIds } }).lean();
     sellerMap = Object.fromEntries(sellers.map((s) => [String(s._id), s]));
   }
 
+  let emailUserMap = {};
+  if (sellerEmails.length > 0) {
+    const emailUsers = await User.find({ email: { $in: sellerEmails } }).lean();
+    emailUserMap = Object.fromEntries(emailUsers.map((s) => [String((s.email || "").toLowerCase()), s]));
+  }
+
   const resolvedItems = items.map((item) => {
     const dbProduct = productMap[item.product];
     if (!dbProduct) throw new Error(`Product ${item.product} not found`);
-    const sellerId = dbProduct.seller ? String(dbProduct.seller) : null;
-    const sellerUser = sellerId ? sellerMap[sellerId] : null;
+
+    // Determine linked seller user (prefer explicit product.seller, otherwise match by sellerEmail)
+    let sellerId = dbProduct.seller ? String(dbProduct.seller) : null;
+    let sellerUser = sellerId ? sellerMap[sellerId] : null;
+    if (!sellerUser && dbProduct.sellerEmail) {
+      const emailKey = String(dbProduct.sellerEmail || "").toLowerCase();
+      const matchedUser = emailUserMap[emailKey];
+      if (matchedUser) {
+        sellerId = String(matchedUser._id);
+        sellerUser = matchedUser;
+      }
+    }
+
+    // Determine MRP and final selling price.
+    // Use `originalPrice` as the MRP when available; otherwise fall back to `price`.
+    const mrp = Number(dbProduct.originalPrice ?? dbProduct.price ?? 0);
+    const discountPct = Number(dbProduct.discount ?? 0);
+    const discount = Number.isFinite(discountPct) ? Math.max(0, Math.min(100, discountPct)) : 0;
+    let finalPrice;
+    if (dbProduct.originalPrice !== undefined && dbProduct.originalPrice !== null) {
+      // If originalPrice is present, compute final price from MRP and discount
+      finalPrice = parseFloat((mrp * (1 - discount / 100)).toFixed(2));
+    } else {
+      // No recorded MRP — assume `price` is already the final selling price
+      finalPrice = Number(dbProduct.price ?? 0);
+    }
+
     return {
       product: dbProduct._id,
       name: dbProduct.name,
-      image: dbProduct.images[0] || "",
-      price: dbProduct.price,
-      quantity: item.quantity,
+      image: dbProduct.images && dbProduct.images.length ? dbProduct.images[0] : "",
+      // Snapshot both original and final prices so financials remain auditable
+      originalPrice: basePrice,
+      discount: discount,
+      price: finalPrice,
+      quantity: Number(item.quantity) || 1,
       // snapshot seller contact/location
-      seller: dbProduct.seller || null,
-      sellerName: (dbProduct.sellerProfile && dbProduct.sellerProfile.name) || (sellerUser && sellerUser.sellerProfile?.name) || (sellerUser && sellerUser.name) || "",
+      seller: sellerId || (dbProduct.seller || null),
+      sellerName: (dbProduct.sellerProfile && dbProduct.sellerProfile.name) || (sellerUser && (sellerUser.sellerProfile?.name || sellerUser.name)) || "",
       sellerEmail: dbProduct.sellerEmail || (sellerUser && sellerUser.email) || "",
       sellerMobile: dbProduct.sellerMobile || (sellerUser && sellerUser.sellerProfile?.mobileNumber) || "",
       sellerHostelNumber: dbProduct.sellerHostelNumber || (sellerUser && sellerUser.sellerProfile?.hostelNumber) || "",
       sellerRoomNumber: dbProduct.sellerRoomNumber || (sellerUser && sellerUser.sellerProfile?.roomNumber) || "",
-        // initial per-item status
-        itemStatus: item.itemStatus || "Pending",
+      // initial per-item status
+      itemStatus: item.itemStatus || "Pending",
     };
   });
 
@@ -81,33 +117,34 @@ exports.createOrder = async (req, res) => {
     })
     .catch(() => {});
 
-  // Notify each seller about items sold (group by seller)
-  const sellerItemsMap = {};
+  // Notify each seller about items sold (group by seller id or by seller email for unlinked sellers)
+  const sellerItemsByUser = {};
+  const sellerItemsByEmail = {};
   for (const item of resolvedItems) {
     const prod = productMap[item.product.toString()];
-    const sellerId = prod?.seller?.toString();
+    const sellerId = item.seller ? String(item.seller) : null;
     if (sellerId) {
-      sellerItemsMap[sellerId] = sellerItemsMap[sellerId] || [];
-      sellerItemsMap[sellerId].push({
-        productId: prod._id,
-        name: prod.name,
-        quantity: item.quantity,
-        price: item.price,
-      });
+      sellerItemsByUser[sellerId] = sellerItemsByUser[sellerId] || [];
+      sellerItemsByUser[sellerId].push({ productId: prod._id, name: prod.name, quantity: item.quantity, price: item.price });
+    } else if (item.sellerEmail) {
+      const emailKey = String(item.sellerEmail).toLowerCase();
+      sellerItemsByEmail[emailKey] = sellerItemsByEmail[emailKey] || [];
+      sellerItemsByEmail[emailKey].push({ productId: prod._id, name: prod.name, quantity: item.quantity, price: item.price });
     }
   }
 
   // Fetch buyer details once
   const buyer = await User.findById(req.user.id).lean();
-  for (const sellerId of Object.keys(sellerItemsMap)) {
+
+  // Send notifications to linked users
+  for (const sellerId of Object.keys(sellerItemsByUser)) {
     try {
       const sellerUser = await User.findById(sellerId).lean();
       if (!sellerUser || !sellerUser.email) continue;
-      // Send seller notification (non-blocking)
       sendSellerOrderNotificationEmail(
         sellerUser.email,
         sellerUser.sellerProfile?.name || sellerUser.name || "Seller",
-        sellerItemsMap[sellerId],
+        sellerItemsByUser[sellerId],
         {
           buyerName: buyer?.name || "",
           buyerEmail: buyer?.email || "",
@@ -117,6 +154,28 @@ exports.createOrder = async (req, res) => {
       ).catch(() => {});
     } catch (err) {
       // ignore per-seller errors
+    }
+  }
+
+  // Send notifications to email-only sellers (try to resolve to a registered user first)
+  for (const emailKey of Object.keys(sellerItemsByEmail)) {
+    try {
+      const resolvedUser = await User.findOne({ email: emailKey }).lean();
+      const toEmail = emailKey;
+      const sellerName = resolvedUser ? (resolvedUser.sellerProfile?.name || resolvedUser.name || "Seller") : emailKey;
+      sendSellerOrderNotificationEmail(
+        toEmail,
+        sellerName,
+        sellerItemsByEmail[emailKey],
+        {
+          buyerName: buyer?.name || "",
+          buyerEmail: buyer?.email || "",
+          shippingAddress,
+        },
+        order
+      ).catch(() => {});
+    } catch (err) {
+      // ignore
     }
   }
 
@@ -233,9 +292,28 @@ exports.updateOrderItemStatus = async (req, res) => {
   const item = order.items.id(itemId);
   if (!item) return res.status(404).json({ success: false, message: "Order item not found" });
 
-  const sellerId = item.seller ? item.seller.toString() : null;
-  if (req.user.role !== "admin" && (!sellerId || sellerId !== req.user.id)) {
+  const sellerId = item.seller ? String(item.seller) : null;
+  const itemSellerEmail = item.sellerEmail ? String(item.sellerEmail).toLowerCase() : null;
+  const itemSellerMobile = item.sellerMobile ? String(item.sellerMobile).trim() : null;
+
+  const requesterId = req.user?.id;
+  const requesterEmail = req.user?.email ? String(req.user.email).toLowerCase() : null;
+  const requesterMobile = req.user?.sellerProfile?.mobileNumber ? String(req.user.sellerProfile.mobileNumber).trim() : null;
+
+  const isSellerOwner = sellerId && requesterId && sellerId === requesterId;
+  const isEmailMatch = itemSellerEmail && requesterEmail && itemSellerEmail === requesterEmail;
+  const isMobileMatch = itemSellerMobile && requesterMobile && itemSellerMobile === requesterMobile;
+
+  if (req.user.role !== "admin" && !isSellerOwner && !isEmailMatch && !isMobileMatch) {
     return res.status(403).json({ success: false, message: "Not authorized to update this item" });
+  }
+
+  // If seller matched by email/mobile and the item wasn't linked to a user, attach the user id for future convenience
+  if (!sellerId && (isEmailMatch || isMobileMatch) && requesterId) {
+    item.seller = requesterId;
+    if (!item.sellerName) item.sellerName = req.user.sellerProfile?.name || req.user.name || "";
+    if (!item.sellerEmail) item.sellerEmail = req.user.email || "";
+    if (!item.sellerMobile) item.sellerMobile = req.user.sellerProfile?.mobileNumber || "";
   }
 
   // Debug: log who requested the change and the requested status
@@ -316,8 +394,18 @@ exports.updateOrderItemStatus = async (req, res) => {
 // @route   GET /api/orders/seller/my
 // @access  Private (seller)
 exports.getSellerOrders = async (req, res) => {
-  // Find products owned by this seller
-  const sellerProducts = await Product.find({ seller: req.user.id }).select("_id").lean();
+  // Find products owned by this seller. Support three matching strategies:
+  // 1) products with `seller` set to this user's id
+  // 2) products with `sellerEmail` matching this user's email
+  // 3) products with `sellerMobile` matching this user's seller profile mobile
+  const sellerEmailNormalized = req.user?.email ? String(req.user.email).toLowerCase() : null;
+  const sellerMobileNormalized = req.user?.sellerProfile?.mobileNumber ? String(req.user.sellerProfile.mobileNumber).trim() : null;
+
+  const orFilters = [{ seller: req.user.id }];
+  if (sellerEmailNormalized) orFilters.push({ sellerEmail: sellerEmailNormalized });
+  if (sellerMobileNormalized) orFilters.push({ sellerMobile: sellerMobileNormalized });
+
+  const sellerProducts = await Product.find({ $or: orFilters }).select("_id").lean();
   const productIds = sellerProducts.map((p) => p._id);
 
   const { page = 1, limit = 20 } = req.query;

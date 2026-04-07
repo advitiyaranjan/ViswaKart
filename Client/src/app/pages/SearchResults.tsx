@@ -60,6 +60,9 @@ export default function SearchResults() {
               id={product._id}
               name={product.name}
               price={product.price}
+              discount={(product as any).discount}
+              seller={(product as any).seller}
+              sellerEmail={(product as any).sellerEmail}
               image={product.images[0]}
               rating={product.ratings}
               reviews={product.numReviews}

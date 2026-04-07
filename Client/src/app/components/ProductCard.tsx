@@ -11,6 +11,9 @@ interface ProductCardProps {
   name: string;
   price: number;
   originalPrice?: number;
+  discount?: number;
+  seller?: string | null;
+  sellerEmail?: string | null;
   rating: number;
   reviews: number;
   image: string;
@@ -25,6 +28,9 @@ export function ProductCard({
   name,
   price,
   originalPrice,
+  discount,
+  seller,
+  sellerEmail,
   rating,
   reviews,
   image,
@@ -63,16 +69,39 @@ export function ProductCard({
     for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i) * 7) | 0;
     return 12 + (Math.abs(h) % 489);
   }
-  const discountPct = originalPrice
-    ? Math.round(((originalPrice - price) / originalPrice) * 100)
-    : seededDiscount(id);
-  const mrp = originalPrice ?? price / (1 - discountPct / 100);
+  let discountPct: number;
+  if (discount !== undefined && discount !== null) {
+    discountPct = Math.round(Number(discount));
+  } else if (originalPrice !== undefined && originalPrice !== null) {
+    discountPct = Math.round(((Number(originalPrice) - Number(price)) / Number(originalPrice)) * 100);
+  } else if (seller || sellerEmail) {
+    // Seller-listed product with no explicit discount/originalPrice: don't invent a random discount
+    discountPct = 0;
+  } else {
+    discountPct = seededDiscount(id);
+  }
+
+  // Compute display price (final selling price) and MRP
+  let displayPrice: number;
+  let mrp: number;
+  if (originalPrice !== undefined && originalPrice !== null) {
+    mrp = Number(originalPrice);
+    displayPrice = discountPct > 0 ? parseFloat((mrp * (1 - discountPct / 100)).toFixed(2)) : mrp;
+  } else if ((discount !== undefined && discount !== null) || seller || sellerEmail) {
+    // Explicit discount present or seller-listed product: treat stored `price` as MRP and apply discount
+    mrp = Number(price || 0);
+    displayPrice = discountPct > 0 ? parseFloat((mrp * (1 - discountPct / 100)).toFixed(2)) : mrp;
+  } else {
+    // Fallback: stored `price` is final; compute mrp from discount if available
+    displayPrice = Number(price || 0);
+    mrp = discountPct > 0 && discountPct < 100 ? parseFloat((displayPrice / (1 - discountPct / 100)).toFixed(2)) : displayPrice;
+  }
   const displayRating = rating && rating > 0 ? rating : seededRating(id);
   const displayReviews = reviews && reviews > 0 ? reviews : seededNumReviews(id);
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
-    addToCart({ _id: String(id), name, price, image, stock });
+    addToCart({ _id: String(id), name, price: displayPrice, image, stock, originalPrice, discount: discountPct });
     setAdded(true);
     setTimeout(() => setAdded(false), 1500);
   };
@@ -122,9 +151,13 @@ export function ProductCard({
 
           <div className="mt-auto">
             <div className="flex items-baseline gap-2 mb-3">
-              <span className="text-2xl font-semibold text-foreground">{formatCurrency(price)}</span>
-              <span className="text-sm text-muted-foreground line-through">{formatCurrency(mrp)}</span>
-              <span className="text-xs font-semibold text-green-600">{discountPct}% off</span>
+              <span className="text-2xl font-semibold text-foreground">{formatCurrency(displayPrice)}</span>
+              {mrp > displayPrice && (
+                <span className="text-sm text-muted-foreground line-through">{formatCurrency(mrp)}</span>
+              )}
+              {discountPct > 0 && (
+                <span className="text-xs font-semibold text-green-600">{discountPct}% off</span>
+              )}
             </div>
 
             <Button
