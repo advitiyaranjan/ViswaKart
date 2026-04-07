@@ -163,12 +163,12 @@ export default function UserLayout() {
                   <UserButton afterSignOutUrl="/">
                     <UserButton.UserProfileLink
                       label="My Addresses"
-                      url="/account/addresses"
+                      url="/account"
                       labelIcon={<MapPin className="w-4 h-4" />}
                     />
                     <UserButton.UserProfileLink
                       label="My Orders"
-                      url="/account/orders"
+                      url="/account"
                       labelIcon={<OrdersIcon className="w-4 h-4" />}
                     />
                   </UserButton>

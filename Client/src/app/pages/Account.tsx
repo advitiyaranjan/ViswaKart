@@ -6,7 +6,7 @@ import OrdersPage from "./profile/OrdersPage";
 export default function Account() {
   return (
     <div className="min-h-screen bg-slate-50/60 flex justify-center py-10 px-4">
-      <UserProfile path="/account" routing="path">
+      <UserProfile routing="hash">
         {/* My Addresses — appears alongside Profile & Security in the left sidebar */}
         <UserProfile.Page
           label="My Addresses"
