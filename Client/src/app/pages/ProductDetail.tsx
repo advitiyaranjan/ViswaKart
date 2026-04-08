@@ -3,7 +3,7 @@ import { Star, ShoppingCart, Check, Heart, Share2, Truck, Shield, RotateCcw, Thu
 import { Button } from "../components/Button";
 import { formatCurrency } from "../../lib/currency";
 import { ProductCard } from "../components/ProductCard";
-import { productService } from "../../services/productService";
+import { productService, getCachedProductData, getCachedProductsData } from "../../services/productService";
 import { useCart } from "../../context/CartContext";
 import { useState, useEffect } from "react";
 
@@ -144,9 +144,14 @@ export default function ProductDetail() {
   const { id } = useParams();
   const { addToCart } = useCart();
   const navigate = useNavigate();
-  const [product, setProduct] = useState<Product | null>(null);
-  const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const initialProductCache = id ? getCachedProductData(id) : null;
+  const initialProduct = initialProductCache?.product ?? null;
+  const initialRelatedCache = initialProduct?.category?.slug ? getCachedProductsData({ category: initialProduct.category.slug, limit: 4 }) : null;
+  const [product, setProduct] = useState<Product | null>(initialProduct);
+  const [relatedProducts, setRelatedProducts] = useState<Product[]>(() =>
+    initialRelatedCache?.products?.filter((p: Product) => p._id !== id).slice(0, 4) ?? []
+  );
+  const [isLoading, setIsLoading] = useState(() => !initialProduct);
   const [error, setError] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [selectedImage, setSelectedImage] = useState(0);
@@ -197,7 +202,18 @@ export default function ProductDetail() {
 
   useEffect(() => {
     if (!id) return;
-    setIsLoading(true);
+    const cached = getCachedProductData(id);
+    if (cached?.product) {
+      const cachedProduct = cached.product as Product;
+      setProduct(cachedProduct);
+      setIsLoading(false);
+      const relatedCache = cachedProduct.category?.slug ? getCachedProductsData({ category: cachedProduct.category.slug, limit: 4 }) : null;
+      if (relatedCache?.products) {
+        setRelatedProducts((relatedCache.products as Product[]).filter((p) => p._id !== id).slice(0, 4));
+      }
+    } else {
+      setIsLoading(true);
+    }
     productService
       .getProduct(id)
       .then((res) => {
