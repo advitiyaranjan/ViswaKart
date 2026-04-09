@@ -14,6 +14,7 @@ const categoryRoutes = require("./routes/categoryRoutes");
 const orderRoutes = require("./routes/orderRoutes");
 const userRoutes = require("./routes/userRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
+const webhookRoutes = require("./routes/webhookRoutes");
 
 const app = express();
 
@@ -39,6 +40,9 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
+// ─── Webhook Routes (must come before express.json to access raw body) ────────
+app.use("/api/webhooks", webhookRoutes);
 
 // ─── General Middleware ────────────────────────────────────────────────────────
 app.use(express.json({ limit: "10mb" }));
