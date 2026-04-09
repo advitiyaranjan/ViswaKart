@@ -2,11 +2,46 @@ const User = require("../models/User");
 const Order = require("../models/Order");
 const Product = require("../models/Product");
 const Category = require("../models/Category");
+const { createClerkClient } = require("@clerk/backend");
+const crypto = require("crypto");
+
+// Sync all Clerk users into MongoDB (upsert)
+async function syncClerkUsers() {
+  const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
+  let offset = 0;
+  const pageSize = 100;
+  while (true) {
+    const { data: clerkUsers } = await clerk.users.getUserList({ limit: pageSize, offset });
+    if (!clerkUsers.length) break;
+    for (const cu of clerkUsers) {
+      const email = cu.emailAddresses?.[0]?.emailAddress ?? "";
+      const name = `${cu.firstName ?? ""} ${cu.lastName ?? ""}`.trim() || email;
+      await User.findOneAndUpdate(
+        { clerkId: cu.id },
+        {
+          $setOnInsert: {
+            clerkId: cu.id,
+            email,
+            name,
+            avatar: cu.imageUrl,
+            password: crypto.randomBytes(32).toString("hex"),
+          },
+        },
+        { upsert: true, new: false }
+      );
+    }
+    if (clerkUsers.length < pageSize) break;
+    offset += pageSize;
+  }
+}
 
 // @desc    Get all users (admin)
 // @route   GET /api/users
 // @access  Admin
 exports.getUsers = async (req, res) => {
+  // Sync Clerk users first so newly registered users appear
+  await syncClerkUsers();
+
   const { page = 1, limit = 20, search } = req.query;
   const skip = (Number(page) - 1) * Number(limit);
   const query = search ? { name: { $regex: search, $options: "i" } } : {};

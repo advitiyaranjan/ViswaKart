@@ -181,7 +181,7 @@ export default function Checkout() {
             <Link to="/products">
               <Button variant="primary" className="w-full">Continue Shopping</Button>
             </Link>
-            <Link to="/account">
+            <Link to="/account#/orders">
               <Button variant="outline" className="w-full">View My Orders</Button>
             </Link>
           </div>
