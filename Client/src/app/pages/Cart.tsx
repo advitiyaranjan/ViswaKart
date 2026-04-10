@@ -6,6 +6,7 @@ import { useAuth } from "../../context/AuthContext";
 import { authService, AddressData } from "../../services/authService";
 import { motion, AnimatePresence } from "motion/react";
 import { useState, useEffect } from "react";
+import { addressSchema, guestAddressSchema } from "../../lib/validationSchemas";
 
 interface SavedAddress {
   _id: string;
@@ -79,8 +80,10 @@ export default function Cart() {
   const [showAllAddrs, setShowAllAddrs] = useState(false);
   const [addrForm, setAddrForm] = useState<AddressData>({ ...EMPTY_FORM });
   const [addrSaving, setAddrSaving] = useState(false);
+  const [addrErrors, setAddrErrors] = useState<Record<string, string>>({});
   // Guest address form
   const [guestAddr, setGuestAddr] = useState({ name: "", phone: "", street: "", city: "", state: "", zipCode: "", country: "" });
+  const [guestAddrErrors, setGuestAddrErrors] = useState<Record<string, string>>({});
   const [guestAddrValid, setGuestAddrValid] = useState(false);
   const [guestAddrOpen, setGuestAddrOpen] = useState(false);
   const [guestAddrSaved, setGuestAddrSaved] = useState(false);
@@ -99,7 +102,8 @@ export default function Cart() {
 
   useEffect(() => {
     const g = guestAddr;
-    setGuestAddrValid(!!(g.name && g.phone && g.street && g.city && g.state && g.zipCode && g.country));
+    const result = guestAddressSchema.safeParse(g);
+    setGuestAddrValid(result.success);
   }, [guestAddr]);
 
   // Derive pincode status from selected address automatically
@@ -109,7 +113,14 @@ export default function Cart() {
   const canCheckout = pinStatus !== "not-deliverable" && (user ? !!selectedAddrId : guestAddrSaved);
 
   async function saveNewAddress() {
-    if (!addrForm.street || !addrForm.city || !addrForm.state || !addrForm.zipCode || !addrForm.country) return;
+    const result = addressSchema.safeParse(addrForm);
+    if (!result.success) {
+      const errs: Record<string, string> = {};
+      result.error.errors.forEach((e) => { if (e.path[0]) errs[String(e.path[0])] = e.message; });
+      setAddrErrors(errs);
+      return;
+    }
+    setAddrErrors({});
     setAddrSaving(true);
     try {
       const res = await authService.addAddress(addrForm);
@@ -399,29 +410,44 @@ export default function Cart() {
                             </div>
 
                             <input placeholder="Full Name *" value={(addrForm as any).name ?? ""}
-                              onChange={(e) => setAddrForm((p) => ({ ...p, name: e.target.value } as any))}
-                              className="w-full px-2.5 py-1.5 text-xs border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                              onChange={(e) => { setAddrForm((p) => ({ ...p, name: e.target.value } as any)); setAddrErrors((p) => ({ ...p, name: "" })); }}
+                              className={`w-full px-2.5 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 ${addrErrors.name ? "border-destructive" : "border-border"}`} />
+                            {addrErrors.name && <p className="text-destructive text-[10px]">{addrErrors.name}</p>}
                             <input placeholder="Phone Number *" type="tel" value={addrForm.phone ?? ""}
-                              onChange={(e) => setAddrForm((p) => ({ ...p, phone: e.target.value }))}
-                              className="w-full px-2.5 py-1.5 text-xs border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                              onChange={(e) => { setAddrForm((p) => ({ ...p, phone: e.target.value })); setAddrErrors((p) => ({ ...p, phone: "" })); }}
+                              className={`w-full px-2.5 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 ${addrErrors.phone ? "border-destructive" : "border-border"}`} />
+                            {addrErrors.phone && <p className="text-destructive text-[10px]">{addrErrors.phone}</p>}
                             <input placeholder="Street Address *" value={addrForm.street}
-                              onChange={(e) => setAddrForm((p) => ({ ...p, street: e.target.value }))}
-                              className="w-full px-2.5 py-1.5 text-xs border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                              onChange={(e) => { setAddrForm((p) => ({ ...p, street: e.target.value })); setAddrErrors((p) => ({ ...p, street: "" })); }}
+                              className={`w-full px-2.5 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 ${addrErrors.street ? "border-destructive" : "border-border"}`} />
+                            {addrErrors.street && <p className="text-destructive text-[10px]">{addrErrors.street}</p>}
                             <div className="grid grid-cols-2 gap-1.5">
-                              <input placeholder="City *" value={addrForm.city}
-                                onChange={(e) => setAddrForm((p) => ({ ...p, city: e.target.value }))}
-                                className="w-full px-2.5 py-1.5 text-xs border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                              <input placeholder="State *" value={addrForm.state}
-                                onChange={(e) => setAddrForm((p) => ({ ...p, state: e.target.value }))}
-                                className="w-full px-2.5 py-1.5 text-xs border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                              <div>
+                                <input placeholder="City *" value={addrForm.city}
+                                  onChange={(e) => { setAddrForm((p) => ({ ...p, city: e.target.value })); setAddrErrors((p) => ({ ...p, city: "" })); }}
+                                  className={`w-full px-2.5 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 ${addrErrors.city ? "border-destructive" : "border-border"}`} />
+                                {addrErrors.city && <p className="text-destructive text-[10px]">{addrErrors.city}</p>}
+                              </div>
+                              <div>
+                                <input placeholder="State *" value={addrForm.state}
+                                  onChange={(e) => { setAddrForm((p) => ({ ...p, state: e.target.value })); setAddrErrors((p) => ({ ...p, state: "" })); }}
+                                  className={`w-full px-2.5 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 ${addrErrors.state ? "border-destructive" : "border-border"}`} />
+                                {addrErrors.state && <p className="text-destructive text-[10px]">{addrErrors.state}</p>}
+                              </div>
                             </div>
                             <div className="grid grid-cols-2 gap-1.5">
-                              <input placeholder="ZIP / Pincode *" value={addrForm.zipCode} maxLength={6}
-                                onChange={(e) => setAddrForm((p) => ({ ...p, zipCode: e.target.value }))}
-                                className="w-full px-2.5 py-1.5 text-xs border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                              <input placeholder="Country *" value={addrForm.country}
-                                onChange={(e) => setAddrForm((p) => ({ ...p, country: e.target.value }))}
-                                className="w-full px-2.5 py-1.5 text-xs border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                              <div>
+                                <input placeholder="ZIP / Pincode *" value={addrForm.zipCode} maxLength={6}
+                                  onChange={(e) => { setAddrForm((p) => ({ ...p, zipCode: e.target.value })); setAddrErrors((p) => ({ ...p, zipCode: "" })); }}
+                                  className={`w-full px-2.5 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 ${addrErrors.zipCode ? "border-destructive" : "border-border"}`} />
+                                {addrErrors.zipCode && <p className="text-destructive text-[10px]">{addrErrors.zipCode}</p>}
+                              </div>
+                              <div>
+                                <input placeholder="Country *" value={addrForm.country}
+                                  onChange={(e) => { setAddrForm((p) => ({ ...p, country: e.target.value })); setAddrErrors((p) => ({ ...p, country: "" })); }}
+                                  className={`w-full px-2.5 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 ${addrErrors.country ? "border-destructive" : "border-border"}`} />
+                                {addrErrors.country && <p className="text-destructive text-[10px]">{addrErrors.country}</p>}
+                              </div>
                             </div>
                             {addrForm.zipCode.length >= 5 && (
                               <div className={`text-xs flex items-center gap-1 font-medium ${
@@ -439,7 +465,7 @@ export default function Cart() {
                               Set as default address
                             </label>
                             <div className="flex gap-2 pt-0.5">
-                              <button onClick={saveNewAddress} disabled={addrSaving || !addrForm.street || !addrForm.city || !addrForm.zipCode || !addrForm.country || checkPinDeliverability(addrForm.zipCode) === "not-deliverable"}
+                              <button onClick={saveNewAddress} disabled={addrSaving || checkPinDeliverability(addrForm.zipCode) === "not-deliverable"}
                                 className="flex-1 py-1.5 text-xs bg-primary text-white rounded-lg font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                                 {addrSaving ? "Saving…" : "Save & Use"}
                               </button>
@@ -515,9 +541,12 @@ export default function Cart() {
                                 { key: "zipCode", placeholder: "ZIP / Pincode *", type: "text" },
                                 { key: "country", placeholder: "Country *", type: "text" },
                               ] as const).map(({ key, placeholder, type }) => (
-                                <input key={key} type={type} placeholder={placeholder} value={(guestAddr as any)[key]}
-                                  onChange={(e) => setGuestAddr((p) => ({ ...p, [key]: e.target.value }))}
-                                  className="w-full px-2.5 py-1.5 text-xs border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white" />
+                                <div key={key}>
+                                  <input type={type} placeholder={placeholder} value={(guestAddr as any)[key]}
+                                    onChange={(e) => { setGuestAddr((p) => ({ ...p, [key]: e.target.value })); setGuestAddrErrors((p) => ({ ...p, [key]: "" })); }}
+                                    className={`w-full px-2.5 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white ${guestAddrErrors[key] ? "border-destructive" : "border-border"}`} />
+                                  {guestAddrErrors[key] && <p className="text-destructive text-[10px] mt-0.5">{guestAddrErrors[key]}</p>}
+                                </div>
                               ))}
                               {guestAddr.zipCode.length >= 5 && (
                                 <div className={`text-xs flex items-center gap-1 font-medium ${
@@ -529,8 +558,18 @@ export default function Cart() {
                                 </div>
                               )}
                               <button
-                                onClick={() => { if (guestAddrValid) { setGuestAddrSaved(true); setGuestAddrOpen(false); } }}
-                                disabled={!guestAddrValid}
+                                onClick={() => {
+                                  const result = guestAddressSchema.safeParse(guestAddr);
+                                  if (!result.success) {
+                                    const errs: Record<string, string> = {};
+                                    result.error.errors.forEach((e) => { if (e.path[0]) errs[String(e.path[0])] = e.message; });
+                                    setGuestAddrErrors(errs);
+                                    return;
+                                  }
+                                  setGuestAddrErrors({});
+                                  setGuestAddrSaved(true);
+                                  setGuestAddrOpen(false);
+                                }}
                                 className="w-full py-1.5 text-xs bg-primary text-white rounded-lg font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                                 Use this address
                               </button>

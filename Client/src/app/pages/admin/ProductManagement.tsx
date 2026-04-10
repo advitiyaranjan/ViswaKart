@@ -3,6 +3,9 @@ import { Plus, Search, Edit, Trash2, Eye } from "lucide-react";
 import { Button } from "../../components/Button";
 import { productService, categoryService } from "../../../services/productService";
 import { Link } from "react-router";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { productSchema, ProductFormValues } from "../../../lib/validationSchemas";
 
 interface Category { _id: string; name: string; }
 interface Product {
@@ -25,8 +28,16 @@ export default function ProductManagement() {
   const [isLoading, setIsLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [form, setForm] = useState({ name: "", category: "", price: "", stock: "", description: "" });
   const [saving, setSaving] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<ProductFormValues>({
+    resolver: zodResolver(productSchema),
+  });
 
   const loadProducts = useCallback(async () => {
     setIsLoading(true);
@@ -48,17 +59,17 @@ export default function ProductManagement() {
 
   const openAdd = () => {
     setEditingProduct(null);
-    setForm({ name: "", category: "", price: "", stock: "", description: "" });
+    reset({ name: "", category: "", price: undefined as any, stock: undefined as any, description: "" });
     setShowModal(true);
   };
 
   const openEdit = (product: Product) => {
     setEditingProduct(product);
-    setForm({
+    reset({
       name: product.name,
       category: product.category?._id || "",
-      price: String(product.price),
-      stock: String(product.stock),
+      price: product.price,
+      stock: product.stock,
       description: product.description,
     });
     setShowModal(true);
@@ -70,15 +81,14 @@ export default function ProductManagement() {
     setProducts((prev) => prev.filter((p) => p._id !== id));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit2 = async (data: ProductFormValues) => {
     setSaving(true);
     try {
-      const data = { name: form.name, category: form.category, price: Number(form.price), stock: Number(form.stock), description: form.description };
+      const payload = { name: data.name, category: data.category, price: data.price, stock: data.stock, description: data.description };
       if (editingProduct) {
-        await productService.updateProduct(editingProduct._id, data);
+        await productService.updateProduct(editingProduct._id, payload);
       } else {
-        await productService.createProduct(data);
+        await productService.createProduct(payload);
       }
       setShowModal(false);
       loadProducts();
@@ -215,46 +225,42 @@ export default function ProductManagement() {
               </h2>
             </div>
 
-            <form className="p-6 space-y-6" onSubmit={handleSubmit}>
+            <form className="p-6 space-y-6" onSubmit={handleSubmit(handleSubmit2)}>
               <div>
                 <label className="block mb-2 font-medium">Product Name</label>
                 <input
                   type="text"
-                  required
                   placeholder="Enter product name"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="w-full px-4 py-2 bg-input-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
+                  {...register("name")}
+                  className={`w-full px-4 py-2 bg-input-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring ${errors.name ? "border-destructive" : "border-input"}`}
                 />
+                {errors.name && <p className="text-destructive text-xs mt-1">{errors.name.message}</p>}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block mb-2 font-medium">Category</label>
                   <select
-                    required
-                    value={form.category}
-                    onChange={(e) => setForm({ ...form, category: e.target.value })}
-                    className="w-full px-4 py-2 bg-input-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
+                    {...register("category")}
+                    className={`w-full px-4 py-2 bg-input-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring ${errors.category ? "border-destructive" : "border-input"}`}
                   >
                     <option value="">Select category</option>
                     {categories.map((c) => (
                       <option key={c._id} value={c._id}>{c.name}</option>
                     ))}
                   </select>
+                  {errors.category && <p className="text-destructive text-xs mt-1">{errors.category.message}</p>}
                 </div>
                 <div>
                   <label className="block mb-2 font-medium">Price</label>
                   <input
                     type="number"
-                    required
-                    min="0"
                     step="0.01"
                     placeholder="0.00"
-                    value={form.price}
-                    onChange={(e) => setForm({ ...form, price: e.target.value })}
-                    className="w-full px-4 py-2 bg-input-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
+                    {...register("price", { valueAsNumber: true })}
+                    className={`w-full px-4 py-2 bg-input-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring ${errors.price ? "border-destructive" : "border-input"}`}
                   />
+                  {errors.price && <p className="text-destructive text-xs mt-1">{errors.price.message}</p>}
                 </div>
               </div>
 
@@ -262,13 +268,11 @@ export default function ProductManagement() {
                 <label className="block mb-2 font-medium">Stock</label>
                 <input
                   type="number"
-                  required
-                  min="0"
                   placeholder="0"
-                  value={form.stock}
-                  onChange={(e) => setForm({ ...form, stock: e.target.value })}
-                  className="w-full px-4 py-2 bg-input-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
+                  {...register("stock", { valueAsNumber: true })}
+                  className={`w-full px-4 py-2 bg-input-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring ${errors.stock ? "border-destructive" : "border-input"}`}
                 />
+                {errors.stock && <p className="text-destructive text-xs mt-1">{errors.stock.message}</p>}
               </div>
 
               <div>
@@ -276,8 +280,7 @@ export default function ProductManagement() {
                 <textarea
                   rows={4}
                   placeholder="Enter product description"
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  {...register("description")}
                   className="w-full px-4 py-2 bg-input-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring resize-none"
                 />
               </div>

@@ -2,6 +2,9 @@ import React, { useState, useEffect } from "react";
 import { MapPin, Plus, Edit2, Trash2 } from "lucide-react";
 import { authService, AddressData } from "../../../services/authService";
 import { Button } from "../../components/Button";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { addressSchema, AddressFormValues } from "../../../lib/validationSchemas";
 
 interface Address {
   _id: string;
@@ -25,127 +28,127 @@ interface AddressFormProps {
 }
 
 function AddressForm({ initial = {}, onSave, onCancel, saving }: AddressFormProps) {
-  const [form, setForm] = useState<AddressData>({
-    label: initial.label ?? "Home",
-    phone: (initial as any).phone ?? "",
-    street: initial.street ?? "",
-    city: initial.city ?? "",
-    state: initial.state ?? "",
-    zipCode: initial.zipCode ?? "",
-    country: initial.country ?? "",
-    isDefault: initial.isDefault ?? false,
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    formState: { errors },
+  } = useForm<AddressFormValues>({
+    resolver: zodResolver(addressSchema),
+    defaultValues: {
+      label: initial.label ?? "Home",
+      phone: (initial as any).phone ?? "",
+      street: initial.street ?? "",
+      city: initial.city ?? "",
+      state: initial.state ?? "",
+      zipCode: initial.zipCode ?? "",
+      country: initial.country ?? "",
+      isDefault: initial.isDefault ?? false,
+    },
   });
 
-  const f = (field: keyof AddressData) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm((p) => ({ ...p, [field]: e.target.value }));
+  const labelValue = watch("label");
 
-  const addrValid =
-    !!(form.phone ?? "").trim() &&
-    !!form.zipCode.trim() &&
-    !!form.street.trim() &&
-    !!form.city.trim() &&
-    !!form.state.trim() &&
-    !!form.country.trim();
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!addrValid) return;
-    onSave(form);
+  const onSubmit = (data: AddressFormValues) => {
+    onSave(data as AddressData);
   };
 
+  const inputCls = (error?: { message?: string }) =>
+    `w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 ${
+      error ? "border-destructive focus:ring-destructive/30" : "border-border"
+    }`;
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 p-4 bg-slate-50 rounded-xl border border-border">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-3 p-4 bg-slate-50 rounded-xl border border-border">
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="text-xs font-medium text-muted-foreground mb-1 block">Label</label>
-          <input
-            value={form.label}
-            onChange={f("label")}
-            placeholder="Home / Work / Other"
-            className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
-          />
+          <div className="flex gap-1.5">
+            {["Home", "Work", "Other"].map((l) => (
+              <button key={l} type="button"
+                onClick={() => setValue("label", l)}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+                  labelValue === l ? "bg-primary text-white border-primary" : "border-border text-muted-foreground hover:border-primary/50"
+                }`}
+              >{l}</button>
+            ))}
+          </div>
         </div>
         <div>
           <label className="text-xs font-medium text-muted-foreground mb-1 block">
             Mobile Number <span className="text-destructive">*</span>
           </label>
           <input
-            value={(form as any).phone ?? ""}
-            onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
+            {...register("phone")}
             placeholder="+91 98765 43210"
             type="tel"
-            required
-            className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+            className={inputCls(errors.phone)}
           />
+          {errors.phone && <p className="text-destructive text-xs mt-1">{errors.phone.message}</p>}
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">Country</label>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Country <span className="text-destructive">*</span></label>
           <input
-            value={form.country}
-            onChange={f("country")}
+            {...register("country")}
             placeholder="United States"
-            required
-            className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+            className={inputCls(errors.country)}
           />
+          {errors.country && <p className="text-destructive text-xs mt-1">{errors.country.message}</p>}
         </div>
       </div>
       <div>
-        <label className="text-xs font-medium text-muted-foreground mb-1 block">Street Address</label>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Street Address <span className="text-destructive">*</span></label>
         <input
-          value={form.street}
-          onChange={f("street")}
+          {...register("street")}
           placeholder="123 Main St, Apt 4B"
-          required
-          className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+          className={inputCls(errors.street)}
         />
+        {errors.street && <p className="text-destructive text-xs mt-1">{errors.street.message}</p>}
       </div>
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">City</label>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">City <span className="text-destructive">*</span></label>
           <input
-            value={form.city}
-            onChange={f("city")}
+            {...register("city")}
             placeholder="New York"
-            required
-            className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+            className={inputCls(errors.city)}
           />
+          {errors.city && <p className="text-destructive text-xs mt-1">{errors.city.message}</p>}
         </div>
         <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">State</label>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">State <span className="text-destructive">*</span></label>
           <input
-            value={form.state}
-            onChange={f("state")}
+            {...register("state")}
             placeholder="NY"
-            required
-            className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+            className={inputCls(errors.state)}
           />
+          {errors.state && <p className="text-destructive text-xs mt-1">{errors.state.message}</p>}
         </div>
         <div>
           <label className="text-xs font-medium text-muted-foreground mb-1 block">
             ZIP / Pincode <span className="text-destructive">*</span>
           </label>
           <input
-            value={form.zipCode}
-            onChange={f("zipCode")}
+            {...register("zipCode")}
             placeholder="10001"
-            required
-            className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+            className={inputCls(errors.zipCode)}
           />
+          {errors.zipCode && <p className="text-destructive text-xs mt-1">{errors.zipCode.message}</p>}
         </div>
       </div>
       <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
         <input
           type="checkbox"
-          checked={!!form.isDefault}
-          onChange={(e) => setForm((p) => ({ ...p, isDefault: e.target.checked }))}
+          {...register("isDefault")}
           className="rounded accent-primary"
         />
         <span>Set as default address</span>
       </label>
       <div className="flex gap-2 pt-1">
-        <Button type="submit" variant="primary" size="sm" disabled={saving || !addrValid}>
+        <Button type="submit" variant="primary" size="sm" disabled={saving}>
           {saving ? "Saving…" : "Save Address"}
         </Button>
         <Button type="button" variant="outline" size="sm" onClick={onCancel}>
