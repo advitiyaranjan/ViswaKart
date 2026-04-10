@@ -21,10 +21,11 @@ const app = express();
 // ─── Security Middleware ───────────────────────────────────────────────────────
 app.use(helmet());
 
-// Rate limiting — 100 requests per 15 minutes per IP
+// Rate limiting — 100 requests per 15 minutes per IP (excludes webhook endpoint)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
+  skip: (req) => req.path.startsWith("/api/webhooks/"),
   message: { success: false, message: "Too many requests, please try again later." },
 });
 app.use("/api", limiter);
