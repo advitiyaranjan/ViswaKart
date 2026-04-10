@@ -37,6 +37,7 @@ export default function ProductManagement() {
     formState: { errors },
   } = useForm<ProductFormValues>({
     resolver: zodResolver(productSchema),
+    mode: "onBlur",
   });
 
   const loadProducts = useCallback(async () => {
@@ -234,7 +235,7 @@ export default function ProductManagement() {
                   {...register("name")}
                   className={`w-full px-4 py-2 bg-input-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring ${errors.name ? "border-destructive" : "border-input"}`}
                 />
-                {errors.name && <p className="text-destructive text-xs mt-1">{errors.name.message}</p>}
+                {errors.name ? <p className="text-destructive text-xs mt-1">{errors.name.message}</p> : <p className="text-muted-foreground text-xs mt-1">Min 2 characters</p>}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -260,7 +261,7 @@ export default function ProductManagement() {
                     {...register("price", { valueAsNumber: true })}
                     className={`w-full px-4 py-2 bg-input-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring ${errors.price ? "border-destructive" : "border-input"}`}
                   />
-                  {errors.price && <p className="text-destructive text-xs mt-1">{errors.price.message}</p>}
+                  {errors.price ? <p className="text-destructive text-xs mt-1">{errors.price.message}</p> : <p className="text-muted-foreground text-xs mt-1">e.g. 9.99 (greater than 0)</p>}
                 </div>
               </div>
 
@@ -272,7 +273,7 @@ export default function ProductManagement() {
                   {...register("stock", { valueAsNumber: true })}
                   className={`w-full px-4 py-2 bg-input-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring ${errors.stock ? "border-destructive" : "border-input"}`}
                 />
-                {errors.stock && <p className="text-destructive text-xs mt-1">{errors.stock.message}</p>}
+                {errors.stock ? <p className="text-destructive text-xs mt-1">{errors.stock.message}</p> : <p className="text-muted-foreground text-xs mt-1">Whole number ≥ 0</p>}
               </div>
 
               <div>

@@ -27,6 +27,7 @@ export default function CategoryManagement() {
     formState: { errors },
   } = useForm<CategoryFormValues>({
     resolver: zodResolver(categorySchema),
+    mode: "onBlur",
   });
 
   const loadCategories = async () => {
@@ -154,7 +155,7 @@ export default function CategoryManagement() {
                   {...register("name")}
                   className={`w-full px-4 py-2 bg-input-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring ${errors.name ? "border-destructive" : "border-input"}`}
                 />
-                {errors.name && <p className="text-destructive text-xs mt-1">{errors.name.message}</p>}
+                {errors.name ? <p className="text-destructive text-xs mt-1">{errors.name.message}</p> : <p className="text-muted-foreground text-xs mt-1">2–50 characters</p>}
               </div>
 
               <div>

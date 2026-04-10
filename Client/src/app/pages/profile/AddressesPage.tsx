@@ -36,6 +36,7 @@ function AddressForm({ initial = {}, onSave, onCancel, saving }: AddressFormProp
     formState: { errors },
   } = useForm<AddressFormValues>({
     resolver: zodResolver(addressSchema),
+    mode: "onBlur",
     defaultValues: {
       label: initial.label ?? "Home",
       phone: (initial as any).phone ?? "",
@@ -85,7 +86,7 @@ function AddressForm({ initial = {}, onSave, onCancel, saving }: AddressFormProp
             type="tel"
             className={inputCls(errors.phone)}
           />
-          {errors.phone && <p className="text-destructive text-xs mt-1">{errors.phone.message}</p>}
+          {errors.phone ? <p className="text-destructive text-xs mt-1">{errors.phone.message}</p> : <p className="text-muted-foreground text-[10px] mt-0.5">Format: +CountryCode Number (e.g. +91 98765 43210)</p>}
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -136,7 +137,7 @@ function AddressForm({ initial = {}, onSave, onCancel, saving }: AddressFormProp
             placeholder="10001"
             className={inputCls(errors.zipCode)}
           />
-          {errors.zipCode && <p className="text-destructive text-xs mt-1">{errors.zipCode.message}</p>}
+          {errors.zipCode ? <p className="text-destructive text-xs mt-1">{errors.zipCode.message}</p> : <p className="text-muted-foreground text-[10px] mt-0.5">e.g. 10001 or SW1A 1AA</p>}
         </div>
       </div>
       <label className="flex items-center gap-2 text-sm cursor-pointer select-none">

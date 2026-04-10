@@ -112,6 +112,20 @@ export default function Cart() {
 
   const canCheckout = pinStatus !== "not-deliverable" && (user ? !!selectedAddrId : guestAddrSaved);
 
+  function validateAddrField(key: string, value: string) {
+    const shape = addressSchema.shape as Record<string, import("zod").ZodTypeAny>;
+    if (!shape[key]) return;
+    const r = shape[key].safeParse(value);
+    setAddrErrors((p) => ({ ...p, [key]: r.success ? "" : r.error.errors[0].message }));
+  }
+
+  function validateGuestField(key: string, value: string) {
+    const shape = guestAddressSchema.shape as Record<string, import("zod").ZodTypeAny>;
+    if (!shape[key]) return;
+    const r = shape[key].safeParse(value);
+    setGuestAddrErrors((p) => ({ ...p, [key]: r.success ? "" : r.error.errors[0].message }));
+  }
+
   async function saveNewAddress() {
     const result = addressSchema.safeParse(addrForm);
     if (!result.success) {
@@ -415,22 +429,26 @@ export default function Cart() {
                             {addrErrors.name && <p className="text-destructive text-[10px]">{addrErrors.name}</p>}
                             <input placeholder="Phone Number *" type="tel" value={addrForm.phone ?? ""}
                               onChange={(e) => { setAddrForm((p) => ({ ...p, phone: e.target.value })); setAddrErrors((p) => ({ ...p, phone: "" })); }}
+                              onBlur={(e) => validateAddrField("phone", e.target.value)}
                               className={`w-full px-2.5 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 ${addrErrors.phone ? "border-destructive" : "border-border"}`} />
-                            {addrErrors.phone && <p className="text-destructive text-[10px]">{addrErrors.phone}</p>}
+                            {addrErrors.phone ? <p className="text-destructive text-[10px]">{addrErrors.phone}</p> : <p className="text-muted-foreground text-[10px]">e.g. +91 98765 43210</p>}
                             <input placeholder="Street Address *" value={addrForm.street}
                               onChange={(e) => { setAddrForm((p) => ({ ...p, street: e.target.value })); setAddrErrors((p) => ({ ...p, street: "" })); }}
+                              onBlur={(e) => validateAddrField("street", e.target.value)}
                               className={`w-full px-2.5 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 ${addrErrors.street ? "border-destructive" : "border-border"}`} />
                             {addrErrors.street && <p className="text-destructive text-[10px]">{addrErrors.street}</p>}
                             <div className="grid grid-cols-2 gap-1.5">
                               <div>
                                 <input placeholder="City *" value={addrForm.city}
                                   onChange={(e) => { setAddrForm((p) => ({ ...p, city: e.target.value })); setAddrErrors((p) => ({ ...p, city: "" })); }}
+                                  onBlur={(e) => validateAddrField("city", e.target.value)}
                                   className={`w-full px-2.5 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 ${addrErrors.city ? "border-destructive" : "border-border"}`} />
                                 {addrErrors.city && <p className="text-destructive text-[10px]">{addrErrors.city}</p>}
                               </div>
                               <div>
                                 <input placeholder="State *" value={addrForm.state}
                                   onChange={(e) => { setAddrForm((p) => ({ ...p, state: e.target.value })); setAddrErrors((p) => ({ ...p, state: "" })); }}
+                                  onBlur={(e) => validateAddrField("state", e.target.value)}
                                   className={`w-full px-2.5 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 ${addrErrors.state ? "border-destructive" : "border-border"}`} />
                                 {addrErrors.state && <p className="text-destructive text-[10px]">{addrErrors.state}</p>}
                               </div>
@@ -439,12 +457,14 @@ export default function Cart() {
                               <div>
                                 <input placeholder="ZIP / Pincode *" value={addrForm.zipCode} maxLength={6}
                                   onChange={(e) => { setAddrForm((p) => ({ ...p, zipCode: e.target.value })); setAddrErrors((p) => ({ ...p, zipCode: "" })); }}
+                                  onBlur={(e) => validateAddrField("zipCode", e.target.value)}
                                   className={`w-full px-2.5 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 ${addrErrors.zipCode ? "border-destructive" : "border-border"}`} />
-                                {addrErrors.zipCode && <p className="text-destructive text-[10px]">{addrErrors.zipCode}</p>}
+                                {addrErrors.zipCode ? <p className="text-destructive text-[10px]">{addrErrors.zipCode}</p> : <p className="text-muted-foreground text-[10px]">e.g. 110001 or SW1A</p>}
                               </div>
                               <div>
                                 <input placeholder="Country *" value={addrForm.country}
                                   onChange={(e) => { setAddrForm((p) => ({ ...p, country: e.target.value })); setAddrErrors((p) => ({ ...p, country: "" })); }}
+                                  onBlur={(e) => validateAddrField("country", e.target.value)}
                                   className={`w-full px-2.5 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 ${addrErrors.country ? "border-destructive" : "border-border"}`} />
                                 {addrErrors.country && <p className="text-destructive text-[10px]">{addrErrors.country}</p>}
                               </div>
@@ -533,19 +553,20 @@ export default function Cart() {
                                 </button>
                               </div>
                               {([
-                                { key: "name", placeholder: "Full name *", type: "text" },
-                                { key: "phone", placeholder: "Phone number *", type: "tel" },
-                                { key: "street", placeholder: "Street address *", type: "text" },
-                                { key: "city", placeholder: "City *", type: "text" },
-                                { key: "state", placeholder: "State *", type: "text" },
-                                { key: "zipCode", placeholder: "ZIP / Pincode *", type: "text" },
-                                { key: "country", placeholder: "Country *", type: "text" },
-                              ] as const).map(({ key, placeholder, type }) => (
+                                { key: "name", placeholder: "Full name *", type: "text", hint: "" },
+                                { key: "phone", placeholder: "Phone number *", type: "tel", hint: "e.g. +91 98765 43210" },
+                                { key: "street", placeholder: "Street address *", type: "text", hint: "" },
+                                { key: "city", placeholder: "City *", type: "text", hint: "" },
+                                { key: "state", placeholder: "State *", type: "text", hint: "" },
+                                { key: "zipCode", placeholder: "ZIP / Pincode *", type: "text", hint: "e.g. 110001 or SW1A" },
+                                { key: "country", placeholder: "Country *", type: "text", hint: "" },
+                              ] as const).map(({ key, placeholder, type, hint }) => (
                                 <div key={key}>
                                   <input type={type} placeholder={placeholder} value={(guestAddr as any)[key]}
                                     onChange={(e) => { setGuestAddr((p) => ({ ...p, [key]: e.target.value })); setGuestAddrErrors((p) => ({ ...p, [key]: "" })); }}
+                                    onBlur={(e) => validateGuestField(key, e.target.value)}
                                     className={`w-full px-2.5 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white ${guestAddrErrors[key] ? "border-destructive" : "border-border"}`} />
-                                  {guestAddrErrors[key] && <p className="text-destructive text-[10px] mt-0.5">{guestAddrErrors[key]}</p>}
+                                  {guestAddrErrors[key] ? <p className="text-destructive text-[10px] mt-0.5">{guestAddrErrors[key]}</p> : hint ? <p className="text-muted-foreground text-[10px] mt-0.5">{hint}</p> : null}
                                 </div>
                               ))}
                               {guestAddr.zipCode.length >= 5 && (
