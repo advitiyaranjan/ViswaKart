@@ -152,6 +152,7 @@ export default function ProductDetail() {
   const [cartAdded, setCartAdded] = useState(false);
   const [wishlisted, setWishlisted] = useState(false);
   const [shareMsg, setShareMsg] = useState("");
+  const [wishlistToast, setWishlistToast] = useState<"added" | "removed" | null>(null);
 
   // Load wishlist state from localStorage once product loads
   useEffect(() => {
@@ -165,13 +166,16 @@ export default function ProductDetail() {
     if (!id) return;
     const saved: string[] = JSON.parse(localStorage.getItem("wishlist") ?? "[]");
     let next: string[];
+    const adding = !wishlisted;
     if (wishlisted) {
       next = saved.filter((x) => x !== id);
     } else {
       next = [...saved, id];
     }
     localStorage.setItem("wishlist", JSON.stringify(next));
-    setWishlisted(!wishlisted);
+    setWishlisted(adding);
+    setWishlistToast(adding ? "added" : "removed");
+    setTimeout(() => setWishlistToast(null), 2500);
   };
 
   const handleShare = async () => {
@@ -232,6 +236,17 @@ export default function ProductDetail() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Wishlist toast */}
+      <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ${
+        wishlistToast ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
+      }`}>
+        <div className={`flex items-center gap-2.5 px-5 py-3 rounded-2xl shadow-xl text-sm font-semibold text-white ${
+          wishlistToast === "added" ? "bg-red-500" : "bg-slate-600"
+        }`}>
+          <Heart className={`w-4 h-4 ${wishlistToast === "added" ? "fill-white" : ""}`} />
+          {wishlistToast === "added" ? "Added to Wishlist!" : "Removed from Wishlist"}
+        </div>
+      </div>
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-8">
         <Link to="/" className="hover:text-primary">Home</Link>
@@ -319,10 +334,10 @@ export default function ProductDetail() {
             <Button
               variant="outline"
               size="lg"
-              className={`flex-1 min-w-[130px] transition-all duration-300 border-2 ${
+              className={`flex-1 min-w-[130px] transition-all duration-300 ${
                 cartAdded
-                  ? "border-green-500 text-green-600 bg-green-50 scale-95"
-                  : "border-primary text-primary hover:bg-primary/10"
+                  ? "bg-green-500 border-green-500 text-white scale-95 hover:bg-green-500"
+                  : "bg-primary border-primary text-white hover:bg-primary/90 hover:border-primary/90"
               }`}
               disabled={product.stock === 0}
               onClick={() => {
