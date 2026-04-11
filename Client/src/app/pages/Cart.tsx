@@ -71,6 +71,35 @@ export default function Cart() {
   const [promoError, setPromoError] = useState("");
   const [deliveryId, setDeliveryId] = useState("standard");
 
+  // ── Item selection ─────────────────────────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+
+  // Initialise / sync selectedIds when items change (auto-select newly added items)
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      items.forEach((i) => { if (!next.has(i._id)) next.add(i._id); });
+      // Remove ids no longer in cart
+      for (const id of next) { if (!items.find((i) => i._id === id)) next.delete(id); }
+      return next;
+    });
+  }, [items]);
+
+  const allSelected = items.length > 0 && items.every((i) => selectedIds.has(i._id));
+  const toggleSelectAll = () => {
+    if (allSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(items.map((i) => i._id)));
+  };
+  const toggleItem = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectedItems = items.filter((i) => selectedIds.has(i._id));
+
   // Address state
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [selectedAddrId, setSelectedAddrId] = useState<string | null>(null);
@@ -110,7 +139,7 @@ export default function Cart() {
   const selectedAddr = savedAddresses.find((a) => a._id === selectedAddrId);
   const pinStatus = selectedAddr ? checkPinDeliverability(selectedAddr.zipCode) : "idle";
 
-  const canCheckout = pinStatus !== "not-deliverable" && (user ? !!selectedAddrId : guestAddrSaved);
+  const canCheckout = pinStatus !== "not-deliverable" && (user ? !!selectedAddrId : guestAddrSaved) && selectedItems.length > 0;
 
   function validateAddrField(key: string, value: string) {
     const shape = addressSchema.shape as Record<string, import("zod").ZodTypeAny>;
@@ -152,14 +181,15 @@ export default function Cart() {
   }
 
   const selectedDelivery = DELIVERY_OPTIONS.find((o) => o.id === deliveryId)!;
-  const freeShipping = subtotal > 50;
+  const selectedSubtotal = selectedItems.reduce((s, i) => s + i.price * i.quantity, 0);
+  const freeShipping = selectedSubtotal > 50;
   const shippingCost = (freeShipping && deliveryId === "standard") ? 0 : selectedDelivery.price;
 
-  const couponDiscount = appliedPromo ? subtotal * (appliedPromo.pct / 100) : 0;
-  const mrpTotal = items.reduce((s, i) => s + getMRP(i.price, i._id) * i.quantity, 0);
-  const productDiscount = mrpTotal - subtotal;
-  const tax = (subtotal - couponDiscount) * 0.08;
-  const total = subtotal - couponDiscount + shippingCost + tax;
+  const couponDiscount = appliedPromo ? selectedSubtotal * (appliedPromo.pct / 100) : 0;
+  const mrpTotal = selectedItems.reduce((s, i) => s + getMRP(i.price, i._id) * i.quantity, 0);
+  const productDiscount = mrpTotal - selectedSubtotal;
+  const tax = (selectedSubtotal - couponDiscount) * 0.08;
+  const total = selectedSubtotal - couponDiscount + shippingCost + tax;
 
   function applyPromo() {
     const code = promoInput.trim().toUpperCase();
@@ -212,10 +242,29 @@ export default function Cart() {
 
           {/* Cart Items */}
           <div className="lg:col-span-2 space-y-4">
+            {/* Select-all bar */}
+            <div className="bg-white rounded-2xl border border-border px-4 py-3 flex items-center justify-between">
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 accent-primary cursor-pointer"
+                  checked={allSelected}
+                  onChange={toggleSelectAll}
+                />
+                <span className="text-sm font-medium">
+                  {allSelected ? "Deselect All" : "Select All"}
+                </span>
+              </label>
+              <span className="text-xs text-muted-foreground">
+                {selectedItems.length} of {items.length} selected
+              </span>
+            </div>
+
             <AnimatePresence>
               {items.map((item) => {
                 const mrp = getMRP(item.price, item._id);
                 const discPct = getDiscountPct(item._id);
+                const isSelected = selectedIds.has(item._id);
                 return (
                   <motion.div
                     key={item._id}
@@ -223,9 +272,20 @@ export default function Cart() {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, x: -40 }}
                     transition={{ duration: 0.2 }}
-                    className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden"
+                    className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all ${
+                      isSelected ? "border-primary/40" : "border-border opacity-60"
+                    }`}
                   >
                     <div className="flex gap-0">
+                      {/* Checkbox + Image */}
+                      <div className="flex items-center pl-3">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 accent-primary cursor-pointer"
+                          checked={isSelected}
+                          onChange={() => toggleItem(item._id)}
+                        />
+                      </div>
                       {/* Image */}
                       <div className="w-32 sm:w-40 flex-shrink-0 bg-muted relative">
                         <img
@@ -722,14 +782,15 @@ export default function Cart() {
                 disabled={!canCheckout}
                 onClick={() => {
                   if (!canCheckout) return;
-                  navigate("/checkout", {
+                navigate("/checkout", {
                     state: {
                       selectedAddr: selectedAddr ?? (guestAddrSaved ? guestAddr : null),
                       shippingCost,
                       couponDiscount,
                       total,
+                      selectedItemIds: Array.from(selectedIds),
                       breakdown: {
-                        itemsPrice: subtotal,
+                        itemsPrice: selectedSubtotal,
                         shippingPrice: shippingCost,
                         taxPrice: tax,
                         couponDiscount,

@@ -1,5 +1,5 @@
 import { useParams, Link, useNavigate } from "react-router";
-import { Star, ShoppingCart, Check, Heart, Share2, Truck, Shield, RotateCcw, ThumbsUp, AlertCircle, Zap, MapPin, CheckCircle2, Search, ChevronDown, ChevronUp, Package } from "lucide-react";
+import { Star, ShoppingCart, Check, Heart, Share2, Truck, Shield, RotateCcw, ThumbsUp, AlertCircle, Zap, MapPin, CheckCircle2, Search, ChevronDown, ChevronUp, Package, Link2 } from "lucide-react";
 import { Button } from "../components/Button";
 import { ProductCard } from "../components/ProductCard";
 import { productService } from "../../services/productService";
@@ -150,6 +150,42 @@ export default function ProductDetail() {
   const [pincodeStatus, setPincodeStatus] = useState<"idle" | "deliverable" | "not-deliverable" | "invalid">("idle");
   const [specsOpen, setSpecsOpen] = useState(false);
   const [cartAdded, setCartAdded] = useState(false);
+  const [wishlisted, setWishlisted] = useState(false);
+  const [shareMsg, setShareMsg] = useState("");
+
+  // Load wishlist state from localStorage once product loads
+  useEffect(() => {
+    if (id) {
+      const saved: string[] = JSON.parse(localStorage.getItem("wishlist") ?? "[]");
+      setWishlisted(saved.includes(id));
+    }
+  }, [id]);
+
+  const toggleWishlist = () => {
+    if (!id) return;
+    const saved: string[] = JSON.parse(localStorage.getItem("wishlist") ?? "[]");
+    let next: string[];
+    if (wishlisted) {
+      next = saved.filter((x) => x !== id);
+    } else {
+      next = [...saved, id];
+    }
+    localStorage.setItem("wishlist", JSON.stringify(next));
+    setWishlisted(!wishlisted);
+  };
+
+  const handleShare = async () => {
+    const url = window.location.href;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: product?.name ?? "Product", url });
+      } catch { /* user cancelled */ }
+    } else {
+      await navigator.clipboard.writeText(url);
+      setShareMsg("Link copied!");
+      setTimeout(() => setShareMsg(""), 2000);
+    }
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -280,7 +316,14 @@ export default function ProductDetail() {
               <button onClick={() => setQuantity(Math.min(product.stock, quantity + 1))} className="px-4 py-2.5 hover:bg-accent transition-colors font-bold">+</button>
             </div>
 
-            <Button variant="outline" size="lg" className={`flex-1 min-w-[130px] transition-all duration-300 ${cartAdded ? "border-green-500 text-green-600 scale-95" : ""}`}
+            <Button
+              variant="outline"
+              size="lg"
+              className={`flex-1 min-w-[130px] transition-all duration-300 border-2 ${
+                cartAdded
+                  ? "border-green-500 text-green-600 bg-green-50 scale-95"
+                  : "border-primary text-primary hover:bg-primary/10"
+              }`}
               disabled={product.stock === 0}
               onClick={() => {
                 addToCart({ _id: product._id, name: product.name, price: product.price, image: images[0], stock: product.stock }, quantity);
@@ -291,22 +334,51 @@ export default function ProductDetail() {
               {cartAdded ? <><Check className="w-5 h-5 mr-2 text-green-500" /> Added!</> : <><ShoppingCart className="w-5 h-5 mr-2" /> Add to Cart</>}
             </Button>
 
-            <Button variant="primary" size="lg" className="flex-1 min-w-[130px]"
+            <Button
+              variant="primary"
+              size="lg"
+              className="flex-1 min-w-[130px]"
               disabled={product.stock === 0}
-              onClick={() => {
-                addToCart({ _id: product._id, name: product.name, price: product.price, image: images[0], stock: product.stock }, quantity);
-                navigate("/cart");
-              }}
+              onClick={() =>
+                navigate("/buy-now", {
+                  state: {
+                    product: {
+                      _id: product._id,
+                      name: product.name,
+                      price: product.price,
+                      image: images[0],
+                      stock: product.stock,
+                    },
+                    quantity,
+                  },
+                })
+              }
             >
               <Zap className="w-5 h-5 mr-2" /> Buy Now
             </Button>
 
-            <Button variant="outline" size="lg">
-              <Heart className="w-5 h-5" />
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={toggleWishlist}
+              className={`transition-colors ${
+                wishlisted ? "border-red-400 text-red-500 bg-red-50 hover:bg-red-100" : ""
+              }`}
+              title={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
+            >
+              <Heart className={`w-5 h-5 transition-all ${wishlisted ? "fill-red-500 text-red-500" : ""}`} />
             </Button>
-            <Button variant="outline" size="lg">
-              <Share2 className="w-5 h-5" />
-            </Button>
+
+            <div className="relative">
+              <Button variant="outline" size="lg" onClick={handleShare} title="Share product">
+                {shareMsg ? <Link2 className="w-5 h-5" /> : <Share2 className="w-5 h-5" />}
+              </Button>
+              {shareMsg && (
+                <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-foreground text-background text-xs rounded px-2 py-1 whitespace-nowrap">
+                  {shareMsg}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Pincode delivery check */}

@@ -114,7 +114,7 @@ function PaymentForm({
 // ─── Main Checkout page ───────────────────────────────────────────────────────
 
 export default function Checkout() {
-  const { items, clearCart } = useCart() as any;
+  const { items, removeItems } = useCart() as any;
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -124,6 +124,7 @@ export default function Checkout() {
     shippingCost: number;
     couponDiscount: number;
     total: number;
+    selectedItemIds?: string[];
     breakdown: any;
   } | null;
 
@@ -135,13 +136,19 @@ export default function Checkout() {
   const [success, setSuccess] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
 
+  // Determine which items are being checked out
+  const checkoutItemIds = checkoutState?.selectedItemIds;
+  const checkoutItems: any[] = checkoutItemIds
+    ? items.filter((i: any) => checkoutItemIds.includes(i._id))
+    : items;
+
   useEffect(() => {
     if (!user) { navigate("/login"); return; }
     if (!items || items.length === 0) { navigate("/cart"); return; }
     if (!checkoutState?.selectedAddr) { navigate("/cart"); return; }
 
     api.post("/payments/create-intent", {
-      items: items.map((i: any) => ({ product: i._id, quantity: i.quantity })),
+      items: checkoutItems.map((i: any) => ({ product: i._id, quantity: i.quantity })),
       shippingPrice: checkoutState.shippingCost,
       couponDiscount: checkoutState.couponDiscount,
     })
@@ -155,7 +162,8 @@ export default function Checkout() {
   }, []);
 
   const handleSuccess = (id: string) => {
-    clearCart?.();
+    // Only remove the items that were checked out
+    removeItems?.(checkoutItems.map((i: any) => i._id));
     setOrderId(id);
     setSuccess(true);
   };
@@ -231,7 +239,7 @@ export default function Checkout() {
                   paymentIntentId={paymentIntentId!}
                   shippingAddress={addr}
                   breakdown={breakdown}
-                  cartItems={items.map((i: any) => ({ product: i._id, quantity: i.quantity }))}
+                  cartItems={checkoutItems.map((i: any) => ({ product: i._id, quantity: i.quantity }))}
                   onSuccess={handleSuccess}
                 />
               </Elements>
@@ -259,10 +267,10 @@ export default function Checkout() {
           {/* Items */}
           <div className="bg-white rounded-2xl border border-border p-4 shadow-sm">
             <p className="text-xs font-semibold mb-3 flex items-center gap-1.5">
-              <ShoppingBag className="w-4 h-4 text-primary" /> Order Items ({items.length})
-            </p>
-            <div className="space-y-2">
-              {items.map((item: any) => (
+                <ShoppingBag className="w-4 h-4 text-primary" /> Order Items ({checkoutItems.length})
+              </p>
+              <div className="space-y-2">
+                {checkoutItems.map((item: any) => (
                 <div key={item._id} className="flex items-center gap-2">
                   <div className="w-10 h-10 rounded-lg overflow-hidden bg-slate-100 flex-shrink-0">
                     <img src={item.image} alt={item.name} className="w-full h-full object-cover" />

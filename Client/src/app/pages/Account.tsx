@@ -1,7 +1,8 @@
 import { UserProfile } from "@clerk/react";
-import { MapPin, ShoppingBag } from "lucide-react";
+import { MapPin, ShoppingBag, HelpCircle } from "lucide-react";
 import AddressesPage from "./profile/AddressesPage";
 import OrdersPage from "./profile/OrdersPage";
+import HelpSupportPage from "./profile/HelpSupportPage";
 
 export default function Account() {
   return (
@@ -23,6 +24,15 @@ export default function Account() {
           labelIcon={<ShoppingBag className="w-4 h-4" />}
         >
           <OrdersPage />
+        </UserProfile.Page>
+
+        {/* Help & Support */}
+        <UserProfile.Page
+          label="Help & Support"
+          url="help"
+          labelIcon={<HelpCircle className="w-4 h-4" />}
+        >
+          <HelpSupportPage />
         </UserProfile.Page>
       </UserProfile>
     </div>

@@ -11,8 +11,9 @@ export interface CartItem {
 
 interface CartContextValue {
   items: CartItem[];
-  addToCart: (item: Omit<CartItem, "quantity">) => void;
+  addToCart: (item: Omit<CartItem, "quantity">, quantity?: number) => void;
   removeFromCart: (id: string) => void;
+  removeItems: (ids: string[]) => void;
   updateQuantity: (id: string, delta: number) => void;
   clearCart: () => void;
   totalItems: number;
@@ -38,17 +39,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(CART_KEY, JSON.stringify(items));
   }, [items]);
 
-  const addToCart = (item: Omit<CartItem, "quantity">) => {
+  const addToCart = (item: Omit<CartItem, "quantity">, quantity = 1) => {
     setItems((prev) => {
       const existing = prev.find((i) => i._id === item._id);
       if (existing) {
         return prev.map((i) =>
           i._id === item._id
-            ? { ...i, quantity: Math.min(i.quantity + 1, item.stock) }
+            ? { ...i, quantity: Math.min(i.quantity + quantity, item.stock) }
             : i
         );
       }
-      return [...prev, { ...item, quantity: 1 }];
+      return [...prev, { ...item, quantity: Math.min(quantity, item.stock) }];
     });
   };
 
@@ -66,6 +67,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  const removeItems = (ids: string[]) => {
+    setItems((prev) => prev.filter((i) => !ids.includes(i._id)));
+  };
+
   const clearCart = () => setItems([]);
 
   const totalItems = items.reduce((s, i) => s + i.quantity, 0);
@@ -73,7 +78,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   return (
     <CartContext.Provider
-      value={{ items, addToCart, removeFromCart, updateQuantity, clearCart, totalItems, subtotal }}
+      value={{ items, addToCart, removeFromCart, removeItems, updateQuantity, clearCart, totalItems, subtotal }}
     >
       {children}
     </CartContext.Provider>
