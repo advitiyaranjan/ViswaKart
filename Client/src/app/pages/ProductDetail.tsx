@@ -332,12 +332,12 @@ export default function ProductDetail() {
             </div>
 
             <Button
-              variant="outline"
+              variant="primary"
               size="lg"
-              className={`flex-1 min-w-[130px] transition-all duration-300 ${
+              className={`flex-1 min-w-[130px] transition-all duration-200 ${
                 cartAdded
-                  ? "bg-green-500 border-green-500 text-white scale-95 hover:bg-green-500"
-                  : "bg-green-400 border-green-400 text-white hover:bg-green-500 hover:border-green-500"
+                  ? "bg-green-600 shadow-md scale-95"
+                  : "bg-green-400 hover:bg-green-500 hover:scale-105 hover:-translate-y-0.5 hover:shadow-lg"
               }`}
               disabled={product.stock === 0}
               onClick={() => {
@@ -346,13 +346,13 @@ export default function ProductDetail() {
                 setTimeout(() => setCartAdded(false), 1500);
               }}
             >
-              {cartAdded ? <><Check className="w-5 h-5 mr-2 text-green-500" /> Added!</> : <><ShoppingCart className="w-5 h-5 mr-2" /> Add to Cart</>}
+              {cartAdded ? <><Check className="w-5 h-5 mr-2" /> Added!</> : <><ShoppingCart className="w-5 h-5 mr-2" /> Add to Cart</>}
             </Button>
 
             <Button
               variant="primary"
               size="lg"
-              className="flex-1 min-w-[130px]"
+              className="flex-1 min-w-[130px] hover:scale-105 hover:-translate-y-0.5 hover:shadow-lg transition-all duration-200"
               disabled={product.stock === 0}
               onClick={() =>
                 navigate("/buy-now", {
