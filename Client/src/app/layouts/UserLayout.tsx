@@ -1,8 +1,7 @@
 import { Outlet, Link, useLocation, useNavigate } from "react-router";
-import { Search, ShoppingCart, ShoppingBag, User, Menu, X, LayoutDashboard, ArrowLeft } from "lucide-react";
+import { Search, ShoppingCart, ShoppingBag, User, Menu, X, LayoutDashboard, ArrowLeft, Heart } from "lucide-react";
 import { Button } from "../components/Button";
 import { useState, useEffect, useRef } from "react";
-import { useAuth } from "../../context/AuthContext";
 import { useCart } from "../../context/CartContext";
 import { categoryService, productService } from "../../services/productService";
 import { UserButton, SignInButton, useUser } from "@clerk/react";
@@ -25,6 +24,17 @@ export default function UserLayout() {
   const { totalItems } = useCart();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Wishlist count — reads from localStorage, updates on storage events
+  const [wishlistCount, setWishlistCount] = useState(0);
+  useEffect(() => {
+    const read = () => setWishlistCount(JSON.parse(localStorage.getItem("wishlist") ?? "[]").length);
+    read();
+    window.addEventListener("storage", read);
+    // Poll for same-tab changes
+    const id = setInterval(read, 500);
+    return () => { window.removeEventListener("storage", read); clearInterval(id); };
+  }, []);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -143,6 +153,17 @@ export default function UserLayout() {
 
             {/* Actions */}
             <div className="flex items-center gap-2">
+              {/* Wishlist */}
+              <Link to="/wishlist">
+                <Button variant="ghost" size="md" className="relative" title="My Wishlist">
+                  <Heart className={`w-5 h-5 ${wishlistCount > 0 ? "fill-red-500 text-red-500" : ""}`} />
+                  {wishlistCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
+                      {wishlistCount > 9 ? "9+" : wishlistCount}
+                    </span>
+                  )}
+                </Button>
+              </Link>
               <Link to="/cart">
                 <Button variant="ghost" size="md" className="relative">
                   <ShoppingCart className="w-5 h-5" />

@@ -237,16 +237,20 @@ export default function ProductDetail() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Wishlist toast */}
-      <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ${
-        wishlistToast ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
-      }`}>
-        <div className={`flex items-center gap-2.5 px-5 py-3 rounded-2xl shadow-xl text-sm font-semibold text-white ${
-          wishlistToast === "added" ? "bg-red-500" : "bg-slate-600"
-        }`}>
-          <Heart className={`w-4 h-4 ${wishlistToast === "added" ? "fill-white" : ""}`} />
-          {wishlistToast === "added" ? "Added to Wishlist!" : "Removed from Wishlist"}
+      {wishlistToast === "added" && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="flex items-center gap-2.5 px-5 py-3 rounded-2xl shadow-xl text-sm font-semibold text-white bg-red-500">
+            <Heart className="w-4 h-4 fill-white" /> Added to Wishlist!
+          </div>
         </div>
-      </div>
+      )}
+      {wishlistToast === "removed" && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="flex items-center gap-2.5 px-5 py-3 rounded-2xl shadow-xl text-sm font-semibold text-white bg-slate-600">
+            <Heart className="w-4 h-4" /> Removed from Wishlist
+          </div>
+        </div>
+      )}
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-8">
         <Link to="/" className="hover:text-primary">Home</Link>

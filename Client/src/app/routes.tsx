@@ -18,6 +18,7 @@ import CategoryManagement from "./pages/admin/CategoryManagement";
 import OrderManagement from "./pages/admin/OrderManagement";
 import UserManagement from "./pages/admin/UserManagement";
 import NotFound from "./pages/NotFound";
+import Wishlist from "./pages/Wishlist";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 export const router = createBrowserRouter([
@@ -30,6 +31,7 @@ export const router = createBrowserRouter([
       { path: "products/:id", Component: ProductDetail },
       { path: "search", Component: SearchResults },
       { path: "cart", Component: Cart },
+      { path: "wishlist", Component: Wishlist },
       { path: "login", Component: Login },
       { path: "signup", Component: Signup },
       { path: "auth/google/callback", Component: GoogleCallback },
