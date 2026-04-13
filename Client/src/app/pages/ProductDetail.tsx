@@ -337,7 +337,7 @@ export default function ProductDetail() {
               className={`flex-1 min-w-[130px] transition-all duration-300 ${
                 cartAdded
                   ? "bg-green-500 border-green-500 text-white scale-95 hover:bg-green-500"
-                  : "bg-primary border-primary text-white hover:bg-primary/90 hover:border-primary/90"
+                  : "bg-green-400 border-green-400 text-white hover:bg-green-500 hover:border-green-500"
               }`}
               disabled={product.stock === 0}
               onClick={() => {
