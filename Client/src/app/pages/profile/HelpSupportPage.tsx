@@ -139,7 +139,7 @@ export default function HelpSupportPage() {
         <div className="space-y-3">
           <p className="text-sm font-semibold">Contact Us</p>
           <a
-            href="mailto:support@shopzen.com"
+            href="mailto:support@viswakart.com"
             className="flex items-center gap-3 p-3 rounded-xl border border-border hover:border-primary/40 hover:bg-slate-50 transition-all group"
           >
             <div className="w-9 h-9 bg-primary/10 text-primary rounded-lg flex items-center justify-center flex-shrink-0">
@@ -147,7 +147,7 @@ export default function HelpSupportPage() {
             </div>
             <div>
               <p className="text-xs font-semibold group-hover:text-primary transition-colors">Email Support</p>
-              <p className="text-xs text-muted-foreground">support@shopzen.com</p>
+              <p className="text-xs text-muted-foreground">support@viswakart.com</p>
             </div>
             <ExternalLink className="w-3.5 h-3.5 text-muted-foreground ml-auto" />
           </a>

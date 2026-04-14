@@ -76,7 +76,7 @@ export default function UserLayout() {
               <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center">
                 <ShoppingBag className="w-5 h-5 text-white" />
               </div>
-              <span className="text-xl font-bold tracking-tight text-foreground">ShopZen</span>
+              <span className="text-xl font-bold tracking-tight text-foreground">ViswaKart</span>
             </Link>
 
             {/* Search Bar - Desktop */}

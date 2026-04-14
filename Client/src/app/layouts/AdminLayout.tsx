@@ -47,7 +47,7 @@ export default function AdminLayout() {
                 <ShoppingBag className="w-5 h-5 text-white" />
               </div>
               {sidebarOpen && (
-                <span className="text-lg font-bold tracking-tight text-foreground">ShopZen</span>
+                <span className="text-lg font-bold tracking-tight text-foreground">ViswaKart</span>
               )}
             </Link>
           </div>

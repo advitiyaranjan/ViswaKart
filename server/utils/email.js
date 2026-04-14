@@ -42,14 +42,14 @@ async function sendOtpEmail(to, otp) {
   const transporter = await getTransporter();
 
   const info = await transporter.sendMail({
-    from: process.env.EMAIL_FROM || '"ShopZen" <noreply@shopzen.com>',
+    from: process.env.EMAIL_FROM || '"ViswaKart" <noreply@viswakart.com>',
     to,
-    subject: "Your ShopZen verification code",
+    subject: "Your ViswaKart verification code",
     text: `Your OTP is: ${otp}. It expires in 10 minutes.`,
     html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#f8fafc;border-radius:12px;">
         <h2 style="color:#0f766e;margin-bottom:8px;">Verify your email</h2>
-        <p style="color:#475569;margin-bottom:24px;">Use the code below to complete your ShopZen registration. It expires in <strong>10 minutes</strong>.</p>
+        <p style="color:#475569;margin-bottom:24px;">Use the code below to complete your ViswaKart registration. It expires in <strong>10 minutes</strong>.</p>
         <div style="background:#fff;border:2px solid #0f766e;border-radius:10px;padding:24px;text-align:center;">
           <span style="font-size:40px;font-weight:800;letter-spacing:12px;color:#0f766e;">${otp}</span>
         </div>
