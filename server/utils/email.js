@@ -53,7 +53,7 @@ async function sendNewsletterWelcomeEmail(to) {
             <li>💰 Special discount codes</li>
           </ul>
           <div style="text-align:center;margin-top:24px;">
-            <a href="${process.env.CLIENT_URL || "http://localhost:5173"}/products"
+            <a href="${process.env.SITE_URL || "http://localhost:5173"}/products"
                style="background:#0f766e;color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:700;font-size:15px;display:inline-block;">
               Start Shopping
             </a>
