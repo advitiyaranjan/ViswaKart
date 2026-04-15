@@ -15,6 +15,9 @@ async function sendOtpEmail(to, otp) {
     subject: "Your ViswaKart verification code",
     html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#f8fafc;border-radius:12px;">
+        <div style="text-align:center;margin-bottom:20px;">
+          <img src="${process.env.SITE_URL || 'https://ecom.advitiyaranjan.in'}/ecom.png" alt="ViswaKart" style="height:56px;width:auto;object-fit:contain;" />
+        </div>
         <h2 style="color:#0f766e;margin-bottom:8px;">Verify your email</h2>
         <p style="color:#475569;margin-bottom:24px;">Use the code below to complete your ViswaKart registration. It expires in <strong>10 minutes</strong>.</p>
         <div style="background:#fff;border:2px solid #0f766e;border-radius:10px;padding:24px;text-align:center;">
@@ -39,6 +42,7 @@ async function sendNewsletterWelcomeEmail(to) {
     html: `
       <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#f8fafc;border-radius:12px;">
         <div style="text-align:center;margin-bottom:24px;">
+          <img src="${process.env.SITE_URL || 'https://ecom.advitiyaranjan.in'}/ecom.png" alt="ViswaKart" style="height:56px;width:auto;object-fit:contain;margin-bottom:12px;" />
           <h1 style="color:#0f172a;font-size:28px;margin:0;">🎉 You're In!</h1>
         </div>
         <div style="background:#fff;border-radius:10px;padding:28px;border:1px solid #e2e8f0;">
