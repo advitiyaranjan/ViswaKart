@@ -2,6 +2,7 @@ const express = require("express");
 const { Webhook } = require("svix");
 const User = require("../models/User");
 const crypto = require("crypto");
+const { sendWelcomeEmail } = require("../utils/email");
 
 const router = express.Router();
 
@@ -40,7 +41,7 @@ router.post("/clerk", express.raw({ type: "application/json" }), async (req, res
     const name = `${data.first_name ?? ""} ${data.last_name ?? ""}`.trim() || email;
     const avatar = data.image_url ?? "";
 
-    await User.findOneAndUpdate(
+    const result = await User.findOneAndUpdate(
       { clerkId },
       {
         $setOnInsert: {
@@ -53,8 +54,13 @@ router.post("/clerk", express.raw({ type: "application/json" }), async (req, res
         // Always keep name/email/avatar in sync on update
         $set: { name, email, avatar },
       },
-      { upsert: true, new: true }
+      { upsert: true, new: true, rawResult: true }
     );
+
+    // Send welcome email only on first signup (upserted = new doc)
+    if (type === "user.created" && result.lastErrorObject?.upserted && email) {
+      sendWelcomeEmail(email, name).catch(() => {});
+    }
   }
 
   if (type === "user.deleted") {
