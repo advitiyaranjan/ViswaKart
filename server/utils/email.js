@@ -2,6 +2,15 @@ const { Resend } = require("resend");
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.EMAIL_FROM || "onboarding@resend.dev";
+const SITE = process.env.SITE_URL || "https://ecom.advitiyaranjan.in";
+const LOGO = `${SITE}/ecom.png`;
+
+// Hidden preheader trick — pads the preview text so Gmail doesn't pull
+// content from the email body and show the "three dots" clip button.
+function preheader(text) {
+  const padding = "&nbsp;&zwnj;".repeat(120);
+  return `<div style="display:none;max-height:0;overflow:hidden;">${text}${padding}</div>`;
+}
 
 /**
  * Sends an OTP email.
@@ -14,9 +23,10 @@ async function sendOtpEmail(to, otp) {
     to,
     subject: "Your ViswaKart verification code",
     html: `
+      ${preheader(`Your ViswaKart verification code is ${otp}. It expires in 10 minutes.`)}
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#f8fafc;border-radius:12px;">
         <div style="text-align:center;margin-bottom:20px;">
-          <img src="${process.env.SITE_URL || 'https://ecom.advitiyaranjan.in'}/ecom.png" alt="ViswaKart" style="height:56px;width:auto;object-fit:contain;" />
+          <img src="${LOGO}" alt="ViswaKart" style="height:56px;width:auto;object-fit:contain;" />
         </div>
         <h2 style="color:#0f766e;margin-bottom:8px;">Verify your email</h2>
         <p style="color:#475569;margin-bottom:24px;">Use the code below to complete your ViswaKart registration. It expires in <strong>10 minutes</strong>.</p>
@@ -40,9 +50,10 @@ async function sendNewsletterWelcomeEmail(to) {
     to,
     subject: "🎉 Thanks for subscribing to ViswaKart!",
     html: `
+      ${preheader("Welcome to ViswaKart! You're now subscribed for exclusive deals and early access to sales.")}
       <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#f8fafc;border-radius:12px;">
         <div style="text-align:center;margin-bottom:24px;">
-          <img src="${process.env.SITE_URL || 'https://ecom.advitiyaranjan.in'}/ecom.png" alt="ViswaKart" style="height:56px;width:auto;object-fit:contain;margin-bottom:12px;" />
+          <img src="${LOGO}" alt="ViswaKart" style="height:56px;width:auto;object-fit:contain;margin-bottom:12px;" />
           <h1 style="color:#0f172a;font-size:28px;margin:0;">🎉 You're In!</h1>
         </div>
         <div style="background:#fff;border-radius:10px;padding:28px;border:1px solid #e2e8f0;">
@@ -57,7 +68,7 @@ async function sendNewsletterWelcomeEmail(to) {
             <li>💰 Special discount codes</li>
           </ul>
           <div style="text-align:center;margin-top:24px;">
-            <a href="${process.env.SITE_URL || "http://localhost:5173"}/products"
+            <a href="${SITE}"
                style="background:#0f766e;color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:700;font-size:15px;display:inline-block;">
               Start Shopping
             </a>
