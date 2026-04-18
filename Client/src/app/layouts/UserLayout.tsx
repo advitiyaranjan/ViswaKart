@@ -322,9 +322,10 @@ export default function UserLayout() {
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold mb-4">Help</h4>
+              <h4 className="font-semibold mb-4">Help &amp; Support</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><a href="#" className="hover:text-primary">Customer Support</a></li>
+                <li><a href="mailto:advitiyaranjan1@gmail.com" className="hover:text-primary">advitiyaranjan1@gmail.com</a></li>
+                <li><a href="tel:+919430435643" className="hover:text-primary">+91 94304 35643</a></li>
                 <li><a href="#" className="hover:text-primary">Shipping Info</a></li>
                 <li><a href="#" className="hover:text-primary">Returns</a></li>
               </ul>
@@ -346,8 +347,9 @@ export default function UserLayout() {
               </ul>
             </div>
           </div>
-          <div className="mt-8 pt-8 border-t border-border text-center text-sm text-muted-foreground">
-            <p>&copy; 2026 ShopHub. All rights reserved.</p>
+          <div className="mt-8 pt-8 border-t border-border text-center text-sm text-muted-foreground space-y-1">
+            <p>&copy; 2026 ViswaKart. All rights reserved.</p>
+            <p>Developed &amp; managed by <a href="https://advitiyaranjan.in" target="_blank" rel="noopener noreferrer" className="hover:text-primary underline underline-offset-2">advitiyaranjan.in</a></p>
           </div>
         </div>
       </footer>
