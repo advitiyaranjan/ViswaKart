@@ -1,6 +1,6 @@
 import { RouterProvider } from "react-router";
 import { useAuth, useUser } from "@clerk/react";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { router } from "./routes";
 import api from "../services/api";
 
@@ -18,18 +18,18 @@ function ClerkTokenBridge() {
 function LoginEmailBridge() {
   const { isSignedIn } = useAuth();
   const { user } = useUser();
-  const firedRef = useRef(false);
 
   useEffect(() => {
-    if (isSignedIn && user && !firedRef.current) {
-      firedRef.current = true;
+    if (isSignedIn && user) {
+      const key = `login_alert_sent_${user.id}`;
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, "1");
       const email = user.primaryEmailAddress?.emailAddress;
       const name = user.fullName || user.firstName || email || "there";
       if (email) {
         api.post("/auth/login-alert", { email, name }).catch(() => {});
       }
     }
-    if (!isSignedIn) firedRef.current = false;
   }, [isSignedIn, user]);
 
   return null;
