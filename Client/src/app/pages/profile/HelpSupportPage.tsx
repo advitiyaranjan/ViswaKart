@@ -139,7 +139,7 @@ export default function HelpSupportPage() {
         <div className="space-y-3">
           <p className="text-sm font-semibold">Contact Us</p>
           <a
-            href="mailto:support@viswakart.com"
+            href="mailto:advitiyaranjan1@gmail.com"
             className="flex items-center gap-3 p-3 rounded-xl border border-border hover:border-primary/40 hover:bg-slate-50 transition-all group"
           >
             <div className="w-9 h-9 bg-primary/10 text-primary rounded-lg flex items-center justify-center flex-shrink-0">
@@ -147,20 +147,23 @@ export default function HelpSupportPage() {
             </div>
             <div>
               <p className="text-xs font-semibold group-hover:text-primary transition-colors">Email Support</p>
-              <p className="text-xs text-muted-foreground">support@viswakart.com</p>
+              <p className="text-xs text-muted-foreground">advitiyaranjan1@gmail.com</p>
             </div>
             <ExternalLink className="w-3.5 h-3.5 text-muted-foreground ml-auto" />
           </a>
-          <div className="flex items-center gap-3 p-3 rounded-xl border border-border">
+          <a
+            href="tel:+919430435643"
+            className="flex items-center gap-3 p-3 rounded-xl border border-border hover:border-primary/40 hover:bg-slate-50 transition-all group"
+          >
             <div className="w-9 h-9 bg-primary/10 text-primary rounded-lg flex items-center justify-center flex-shrink-0">
               <Phone className="w-4 h-4" />
             </div>
             <div>
-              <p className="text-xs font-semibold">Phone Support</p>
-              <p className="text-xs text-muted-foreground">Mon–Fri, 9 AM–6 PM</p>
-              <p className="text-xs text-muted-foreground">+1 (800) 123-4567</p>
+              <p className="text-xs font-semibold group-hover:text-primary transition-colors">Phone Support</p>
+              <p className="text-xs text-muted-foreground">+91 94304 35643</p>
             </div>
-          </div>
+            <ExternalLink className="w-3.5 h-3.5 text-muted-foreground ml-auto" />
+          </a>
           <div className="flex items-center gap-3 p-3 rounded-xl border border-border">
             <div className="w-9 h-9 bg-primary/10 text-primary rounded-lg flex items-center justify-center flex-shrink-0">
               <MessageCircle className="w-4 h-4" />
