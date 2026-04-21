@@ -4,6 +4,7 @@ import AddressesPage from "./profile/AddressesPage";
 import OrdersPage from "./profile/OrdersPage";
 import HelpSupportPage from "./profile/HelpSupportPage";
 
+
 export default function Account() {
   return (
     <div className="min-h-screen bg-slate-50/60 flex justify-center py-10 px-4">
