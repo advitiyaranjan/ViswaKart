@@ -244,7 +244,7 @@ export default function BuyNow() {
             <Link to="/products">
               <Button variant="primary" className="w-full">Continue Shopping</Button>
             </Link>
-            <Link to="/account#/orders">
+            <Link to="/">
               <Button variant="outline" className="w-full">View My Orders</Button>
             </Link>
           </div>
