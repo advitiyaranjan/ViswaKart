@@ -6,9 +6,10 @@ import { useCart } from "../../context/CartContext";
 import { useAuth } from "../../context/AuthContext";
 import { categoryService, productService } from "../../services/productService";
 import { UserButton, SignInButton, useUser } from "@clerk/react";
-import { MapPin, ShoppingBag as OrdersIcon } from "lucide-react";
+import { MapPin, ShoppingBag as OrdersIcon, HelpCircle } from "lucide-react";
 import AddressesPage from "../pages/profile/AddressesPage";
 import OrdersPage from "../pages/profile/OrdersPage";
+import HelpSupportPage from "../pages/profile/HelpSupportPage";
 
 interface Category { _id: string; name: string; slug: string; }
 
@@ -198,6 +199,13 @@ export default function UserLayout() {
                       labelIcon={<OrdersIcon className="w-4 h-4" />}
                     >
                       <OrdersPage />
+                    </UserButton.UserProfilePage>
+                    <UserButton.UserProfilePage
+                      label="Help & Support"
+                      url="help"
+                      labelIcon={<HelpCircle className="w-4 h-4" />}
+                    >
+                      <HelpSupportPage />
                     </UserButton.UserProfilePage>
                   </UserButton>
                   <span className="hidden md:block text-sm font-medium text-muted-foreground">
