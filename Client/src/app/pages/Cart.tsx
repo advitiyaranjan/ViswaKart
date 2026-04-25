@@ -146,21 +146,23 @@ export default function Cart() {
     const shape = addressSchema.shape as Record<string, import("zod").ZodTypeAny>;
     if (!shape[key]) return;
     const r = shape[key].safeParse(value);
-    setAddrErrors((p) => ({ ...p, [key]: r.success ? "" : r.error.errors[0].message }));
+    const msg = (!r.success && r.error?.errors && r.error.errors.length > 0) ? r.error.errors[0]?.message ?? "" : "";
+    setAddrErrors((p) => ({ ...p, [key]: msg }));
   }
 
   function validateGuestField(key: string, value: string) {
     const shape = guestAddressSchema.shape as Record<string, import("zod").ZodTypeAny>;
     if (!shape[key]) return;
     const r = shape[key].safeParse(value);
-    setGuestAddrErrors((p) => ({ ...p, [key]: r.success ? "" : r.error.errors[0].message }));
+    const msg = (!r.success && r.error?.errors && r.error.errors.length > 0) ? r.error.errors[0]?.message ?? "" : "";
+    setGuestAddrErrors((p) => ({ ...p, [key]: msg }));
   }
 
   async function saveNewAddress() {
     const result = addressSchema.safeParse(addrForm);
     if (!result.success) {
       const errs: Record<string, string> = {};
-      result.error.errors.forEach((e) => { if (e.path[0]) errs[String(e.path[0])] = e.message; });
+      (result.error?.errors ?? []).forEach((e) => { if (e.path && e.path.length > 0) errs[String(e.path[0])] = e.message; });
       setAddrErrors(errs);
       return;
     }
@@ -168,7 +170,8 @@ export default function Cart() {
     setAddrSaving(true);
     try {
       const res = await authService.addAddress(addrForm);
-      const addrs: SavedAddress[] = res.data.addresses;
+      const addrsRaw = res?.data?.addresses ?? res?.data?.user?.addresses;
+      const addrs: SavedAddress[] = Array.isArray(addrsRaw) ? addrsRaw : [];
       setSavedAddresses(addrs);
       const newAddr = addrs[addrs.length - 1];
       if (newAddr) setSelectedAddrId(newAddr._id);
@@ -677,7 +680,7 @@ export default function Cart() {
                                   const result = guestAddressSchema.safeParse(guestAddr);
                                   if (!result.success) {
                                     const errs: Record<string, string> = {};
-                                    result.error.errors.forEach((e) => { if (e.path[0]) errs[String(e.path[0])] = e.message; });
+                                    (result.error?.errors ?? []).forEach((e) => { if (e.path && e.path.length > 0) errs[String(e.path[0])] = e.message; });
                                     setGuestAddrErrors(errs);
                                     return;
                                   }

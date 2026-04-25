@@ -181,7 +181,8 @@ export default function AddressesPage() {
     setSaving(true);
     try {
       const res = await authService.addAddress(data);
-      setAddresses(res.data.addresses);
+      const raw = res?.data?.addresses ?? res?.data?.user?.addresses;
+      setAddresses(Array.isArray(raw) ? raw : []);
       setShowAddForm(false);
     } finally {
       setSaving(false);
@@ -193,7 +194,8 @@ export default function AddressesPage() {
     setSaving(true);
     try {
       const res = await authService.updateAddress(editingAddr._id, data);
-      setAddresses(res.data.addresses);
+      const raw = res?.data?.addresses ?? res?.data?.user?.addresses;
+      setAddresses(Array.isArray(raw) ? raw : []);
       setEditingAddr(null);
     } finally {
       setSaving(false);
@@ -203,7 +205,8 @@ export default function AddressesPage() {
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this address?")) return;
     const res = await authService.deleteAddress(id);
-    setAddresses(res.data.addresses);
+    const raw = res?.data?.addresses ?? res?.data?.user?.addresses;
+    setAddresses(Array.isArray(raw) ? raw : []);
   };
 
   return (

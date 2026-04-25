@@ -225,7 +225,7 @@ export default function BuyNow() {
     const result = addressSchema.safeParse(addrForm);
     if (!result.success) {
       const errs: Record<string, string> = {};
-      result.error.errors.forEach((e) => { if (e.path[0]) errs[String(e.path[0])] = e.message; });
+      (result.error?.errors ?? []).forEach((e) => { if (e.path && e.path.length > 0) errs[String(e.path[0])] = e.message; });
       setAddrErrors(errs);
       return;
     }
@@ -233,7 +233,8 @@ export default function BuyNow() {
     setAddrSaving(true);
     try {
       const res = await authService.addAddress(addrForm);
-      const newAddrs: SavedAddress[] = res.data.user?.addresses ?? [];
+      const raw = res?.data?.addresses ?? res?.data?.user?.addresses;
+      const newAddrs: SavedAddress[] = Array.isArray(raw) ? raw : [];
       setSavedAddresses(newAddrs);
       const newest = newAddrs[newAddrs.length - 1];
       if (newest) setSelectedAddrId(newest._id);

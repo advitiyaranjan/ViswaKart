@@ -21,11 +21,13 @@ import SellerRequests from "./pages/admin/SellerRequests";
 import NotFound from "./pages/NotFound";
 import Wishlist from "./pages/Wishlist";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 export const router = createBrowserRouter([
   {
     path: "/",
     Component: UserLayout,
+    errorElement: <ErrorBoundary />,
     children: [
       { index: true, Component: Homepage },
       { path: "products", Component: ProductListing },
@@ -49,6 +51,7 @@ export const router = createBrowserRouter([
   {
     path: "/admin",
     Component: AdminLayout,
+    errorElement: <ErrorBoundary />,
     children: [
       // All admin routes require authentication + admin role
       {
