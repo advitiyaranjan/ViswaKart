@@ -27,6 +27,9 @@ exports.updateProfile = async (req, res) => {
 exports.addAddress = async (req, res) => {
   const user = await User.findById(req.user.id);
   const { label, phone, street, city, state, zipCode, country, isDefault } = req.body;
+  if (!phone || !/^[0-9]{7,15}$/.test(String(phone))) {
+    return res.status(400).json({ success: false, message: "Phone number is required and must contain only digits (7-15 characters)" });
+  }
   if (isDefault) {
     user.addresses.forEach((a) => { a.isDefault = false; });
   }
@@ -43,6 +46,9 @@ exports.updateAddress = async (req, res) => {
   const addr = user.addresses.id(req.params.addrId);
   if (!addr) return res.status(404).json({ success: false, message: "Address not found" });
   const { label, phone, street, city, state, zipCode, country, isDefault } = req.body;
+  if (!phone || !/^[0-9]{7,15}$/.test(String(phone))) {
+    return res.status(400).json({ success: false, message: "Phone number is required and must contain only digits (7-15 characters)" });
+  }
   if (isDefault) {
     user.addresses.forEach((a) => { a.isDefault = false; });
   }
@@ -239,6 +245,9 @@ exports.googleCallback = async (accessToken, refreshToken, profile, done) => {
 exports.addAddress = async (req, res) => {
   const user = await User.findById(req.user.id);
   const { label, phone, street, city, state, zipCode, country, isDefault } = req.body;
+  if (!phone || !/^[0-9]{7,15}$/.test(String(phone))) {
+    return res.status(400).json({ success: false, message: "Phone number is required and must contain only digits (7-15 characters)" });
+  }
   if (isDefault) {
     user.addresses.forEach((a) => { a.isDefault = false; });
   }
@@ -255,6 +264,9 @@ exports.updateAddress = async (req, res) => {
   const addr = user.addresses.id(req.params.addrId);
   if (!addr) return res.status(404).json({ success: false, message: "Address not found" });
   const { label, phone, street, city, state, zipCode, country, isDefault } = req.body;
+  if (!phone || !/^[0-9]{7,15}$/.test(String(phone))) {
+    return res.status(400).json({ success: false, message: "Phone number is required and must contain only digits (7-15 characters)" });
+  }
   if (isDefault) {
     user.addresses.forEach((a) => { a.isDefault = false; });
   }

@@ -17,6 +17,7 @@ import CategoryManagement from "./pages/admin/CategoryManagement";
 import OrderManagement from "./pages/admin/OrderManagement";
 import UserManagement from "./pages/admin/UserManagement";
 import SupportMessages from "./pages/admin/SupportMessages";
+import SellerRequests from "./pages/admin/SellerRequests";
 import NotFound from "./pages/NotFound";
 import Wishlist from "./pages/Wishlist";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -57,7 +58,8 @@ export const router = createBrowserRouter([
           { path: "products", Component: ProductManagement },
           { path: "categories", Component: CategoryManagement },
           { path: "orders", Component: OrderManagement },
-          { path: "users", Component: UserManagement },
+              { path: "users", Component: UserManagement },
+              { path: "seller-requests", Component: SellerRequests },
           { path: "support", Component: SupportMessages },
         ],
       },

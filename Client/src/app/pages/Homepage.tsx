@@ -5,6 +5,7 @@ import { ProductCard } from "../components/ProductCard";
 import { productService } from "../../services/productService";
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
+import { formatCurrency } from "../../lib/currency";
 
 function seededDiscount(id: string) {
   let h = 0;
@@ -36,7 +37,8 @@ export default function Homepage() {
   useEffect(() => {
     setProductsLoading(true);
     Promise.all([
-      productService.getProducts({ featured: true, limit: 4 }),
+      // Show newest products in the hero area (new arrivals)
+      productService.getProducts({ sort: "-createdAt", limit: 4 }),
       productService.getProducts({ sort: "-ratings", limit: 12 }),
     ])
       .then(([featuredRes, trendingRes]) => {
@@ -49,6 +51,27 @@ export default function Homepage() {
         setTrendingProducts(unique.slice(0, 4));
       })
       .finally(() => setProductsLoading(false));
+  }, []);
+
+  // Listen for newly created products (optimistic update)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const ev = e as CustomEvent<Product>;
+      if (!ev?.detail) return;
+      const prod = ev.detail;
+      setFeaturedProducts((prev) => {
+        const exists = prev.find((p) => p._id === prod._id);
+        if (exists) return prev;
+        return [prod, ...prev].slice(0, 4);
+      });
+      setTrendingProducts((prev) => {
+        const exists = prev.find((p) => p._id === prod._id);
+        if (exists) return prev;
+        return [prod, ...prev].slice(0, 4);
+      });
+    };
+    window.addEventListener('app:productCreated', handler as EventListener);
+    return () => window.removeEventListener('app:productCreated', handler as EventListener);
   }, []);
 
   const handleSubscribe = async () => {
@@ -86,7 +109,7 @@ export default function Homepage() {
                 animate={{ opacity: 1, x: 0 }}
                 className="inline-block bg-amber-400/20 text-amber-300 border border-amber-400/30 text-xs font-semibold px-3 py-1 rounded-full mb-4 tracking-wider uppercase"
               >
-                🔥 New arrivals · Free shipping over $50
+                🔥 New arrivals · Free shipping over {formatCurrency(50)}
               </motion.span>
               <motion.h1
                 initial={{ opacity: 0, y: 16 }}
@@ -173,8 +196,8 @@ export default function Homepage() {
                       </div>
                       <p className="text-white text-xs font-semibold truncate">{product.name}</p>
                       <div className="flex items-baseline gap-1.5">
-                        <p className="text-amber-400 text-sm font-bold">${product.price.toFixed(2)}</p>
-                        <p className="text-white/40 text-xs line-through">${(product.price / (1 - seededDiscount(product._id) / 100)).toFixed(2)}</p>
+                        <p className="text-amber-400 text-sm font-bold">{formatCurrency(product.price)}</p>
+                          <p className="text-white/40 text-xs line-through">{formatCurrency(product.price / (1 - seededDiscount(product._id) / 100))}</p>
                       </div>
                     </div>
                   </Link>
@@ -190,7 +213,7 @@ export default function Homepage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center text-sm font-medium">
             {[
-              { icon: Truck, text: "Free Shipping $50+" },
+              { icon: Truck, text: `Free Shipping ${formatCurrency(50)}+` },
               { icon: RotateCcw, text: "30-Day Returns" },
               { icon: ShieldCheck, text: "Secure Checkout" },
               { icon: Headphones, text: "24/7 Support" },

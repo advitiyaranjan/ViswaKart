@@ -82,11 +82,11 @@ function AddressForm({ initial = {}, onSave, onCancel, saving }: AddressFormProp
           </label>
           <input
             {...register("phone")}
-            placeholder="+91 98765 43210"
+            placeholder="9876543210"
             type="tel"
             className={inputCls(errors.phone)}
           />
-          {errors.phone ? <p className="text-destructive text-xs mt-1">{errors.phone.message}</p> : <p className="text-muted-foreground text-[10px] mt-0.5">Format: +CountryCode Number (e.g. +91 98765 43210)</p>}
+          {errors.phone ? <p className="text-destructive text-xs mt-1">{errors.phone.message}</p> : <p className="text-muted-foreground text-[10px] mt-0.5">Digits only, e.g. 9876543210</p>}
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">

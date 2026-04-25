@@ -4,6 +4,7 @@ import { SlidersHorizontal } from "lucide-react";
 import { ProductCard } from "../components/ProductCard";
 import { Button } from "../components/Button";
 import { productService, categoryService } from "../../services/productService";
+import { formatCurrency } from "../../lib/currency";
 import { ProductCardSkeleton } from "../components/LoadingStates";
 import * as Slider from "@radix-ui/react-slider";
 
@@ -158,9 +159,9 @@ export default function ProductListing() {
 
             {/* Price Range */}
             <div className="mb-6">
-              <h4 className="font-medium mb-3">
-                Price Range: ${priceRange[0]} - ${priceRange[1]}
-              </h4>
+                <h4 className="font-medium mb-3">
+                  Price Range: {formatCurrency(priceRange[0])} - {formatCurrency(priceRange[1])}
+                </h4>
               <Slider.Root
                 className="relative flex items-center select-none touch-none w-full h-5"
                 value={priceRange}

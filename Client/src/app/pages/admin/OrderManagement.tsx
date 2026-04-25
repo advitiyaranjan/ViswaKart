@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Search, Eye } from "lucide-react";
 import { orderService } from "../../../services/orderService";
 import { Link } from "react-router";
+import { formatCurrency } from "../../../lib/currency";
 
 interface Order {
   _id: string;
@@ -29,6 +30,26 @@ export default function OrderManagement() {
     orderService.getAllOrders().then((res) => {
       setOrders(res.data.orders);
     }).finally(() => setIsLoading(false));
+  }, []);
+
+  // Refresh when any order update occurs (seller changed item status or admin changed order status)
+  useEffect(() => {
+    const handler = (e: any) => {
+      setIsLoading(true);
+      orderService.getAllOrders().then((res) => setOrders(res.data.orders)).catch(() => {}).finally(() => setIsLoading(false));
+    };
+    window.addEventListener("order:itemUpdated", handler as EventListener);
+    const storageHandler = (ev: StorageEvent) => {
+      if (ev.key === "order:update") {
+        setIsLoading(true);
+        orderService.getAllOrders().then((res) => setOrders(res.data.orders)).catch(() => {}).finally(() => setIsLoading(false));
+      }
+    };
+    window.addEventListener("storage", storageHandler);
+    return () => {
+      window.removeEventListener("order:itemUpdated", handler as EventListener);
+      window.removeEventListener("storage", storageHandler);
+    };
   }, []);
 
   const handleStatusChange = async (orderId: string, status: string) => {
@@ -110,7 +131,7 @@ export default function OrderManagement() {
                   <td className="px-6 py-4 text-muted-foreground">
                     {new Date(order.createdAt).toLocaleDateString()}
                   </td>
-                  <td className="px-6 py-4 font-medium">${order.totalPrice.toFixed(2)}</td>
+                  <td className="px-6 py-4 font-medium">{formatCurrency(order.totalPrice)}</td>
                   <td className="px-6 py-4">
                     <select
                       value={order.status}

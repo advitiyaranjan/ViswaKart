@@ -4,6 +4,7 @@ import { Button } from "./Button";
 import { useCart } from "../../context/CartContext";
 import { useWishlist } from "../../context/WishlistContext";
 import { useState } from "react";
+import { formatCurrency } from "../../lib/currency";
 
 interface ProductCardProps {
   id: string | number;
@@ -121,8 +122,8 @@ export function ProductCard({
 
           <div className="mt-auto">
             <div className="flex items-baseline gap-2 mb-3">
-              <span className="text-2xl font-semibold text-foreground">${price}</span>
-              <span className="text-sm text-muted-foreground line-through">${mrp.toFixed(2)}</span>
+              <span className="text-2xl font-semibold text-foreground">{formatCurrency(price)}</span>
+              <span className="text-sm text-muted-foreground line-through">{formatCurrency(mrp)}</span>
               <span className="text-xs font-semibold text-green-600">{discountPct}% off</span>
             </div>
 

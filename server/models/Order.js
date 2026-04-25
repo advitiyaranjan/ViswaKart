@@ -10,6 +10,18 @@ const orderItemSchema = new mongoose.Schema({
   image: { type: String, required: true },
   price: { type: Number, required: true },
   quantity: { type: Number, required: true, min: 1 },
+  // Seller snapshot for this item
+  seller: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  sellerName: { type: String, default: "" },
+  sellerEmail: { type: String, default: "" },
+  sellerMobile: { type: String, default: "" },
+  sellerHostelNumber: { type: String, default: "" },
+  sellerRoomNumber: { type: String, default: "" },
+  itemStatus: {
+    type: String,
+    enum: ["Pending", "Processing", "Shipped", "Delivered", "Cancelled"],
+    default: "Pending",
+  },
 });
 
 const orderSchema = new mongoose.Schema(

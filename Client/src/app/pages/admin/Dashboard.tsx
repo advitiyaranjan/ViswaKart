@@ -3,6 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { useEffect, useState } from "react";
 import { userService } from "../../../services/userService";
 import { Link } from "react-router";
+import { formatCurrency } from "../../../lib/currency";
 
 interface Stats {
   totalProducts: number;
@@ -77,7 +78,7 @@ export default function AdminDashboard() {
             <TrendingUp className="w-5 h-5 text-green-600" />
           </div>
           <div className="text-4xl font-bold mb-2">
-            ${stats?.revenue.toLocaleString() ?? "—"}
+            {stats?.revenue !== undefined && stats?.revenue !== null ? formatCurrency(stats.revenue) : "—"}
           </div>
           <p className="text-sm text-muted-foreground">All-time revenue (excl. cancelled)</p>
         </div>
@@ -147,7 +148,7 @@ export default function AdminDashboard() {
                   <td className="px-6 py-4 font-mono text-xs">{(order._id as string).slice(-8)}</td>
                   <td className="px-6 py-4">{(order.user as Record<string,string>)?.name ?? "—"}</td>
                   <td className="px-6 py-4 text-muted-foreground">{new Date(order.createdAt as string).toLocaleDateString()}</td>
-                  <td className="px-6 py-4 font-medium">${(order.totalPrice as number).toFixed(2)}</td>
+                  <td className="px-6 py-4 font-medium">{formatCurrency(order.totalPrice as number)}</td>
                   <td className="px-6 py-4">
                     <span
                       className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${

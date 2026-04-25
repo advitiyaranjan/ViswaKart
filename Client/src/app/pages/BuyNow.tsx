@@ -21,8 +21,10 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { authService, AddressData } from "../../services/authService";
+import { addressSchema } from "../../lib/validationSchemas";
 import api from "../../services/api";
 import { Button } from "../components/Button";
+import { formatCurrency } from "../../lib/currency";
 
 const stripePromise = loadStripe((import.meta as any).env.VITE_STRIPE_PUBLISHABLE_KEY);
 
@@ -138,6 +140,7 @@ export default function BuyNow() {
 
   const [step, setStep] = useState<"address" | "payment">("address");
   const [delivery, setDelivery] = useState("standard");
+  const [paymentMethod, setPaymentMethod] = useState<"card" | "cod">("card");
 
   // Address state
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
@@ -148,6 +151,7 @@ export default function BuyNow() {
     label: "Home", phone: "", street: "", city: "", state: "", zipCode: "", country: "", isDefault: false,
   });
   const [addrSaving, setAddrSaving] = useState(false);
+  const [addrErrors, setAddrErrors] = useState<Record<string, string>>({});
 
   // Payment state
   const [clientSecret, setClientSecret] = useState<string | null>(null);
@@ -184,16 +188,28 @@ export default function BuyNow() {
     setPayLoading(true);
     setInitError("");
     try {
-      const res = await api.post("/payments/create-intent", {
-        items: [{ product: product._id, quantity }],
-        shippingPrice: shippingCost,
-        couponDiscount: 0,
-      });
-      setClientSecret(res.data.clientSecret);
-      setPaymentIntentId(res.data.paymentIntentId);
-      setBreakdown(res.data.breakdown ?? { itemsPrice, shippingPrice: shippingCost, taxPrice, totalPrice });
-      setStep("payment");
-    } catch {
+      if (paymentMethod === "card") {
+        const res = await api.post("/payments/create-intent", {
+          items: [{ product: product._id, quantity }],
+          shippingPrice: shippingCost,
+          couponDiscount: 0,
+        });
+        setClientSecret(res.data.clientSecret);
+        setPaymentIntentId(res.data.paymentIntentId);
+        setBreakdown(res.data.breakdown ?? { itemsPrice, shippingPrice: shippingCost, taxPrice, totalPrice });
+        setStep("payment");
+      } else {
+        // Cash on Delivery: create order directly
+        const res = await api.post("/orders", {
+          items: [{ product: product._id, quantity }],
+          shippingAddress: selectedAddr,
+          paymentMethod: "cod",
+          shippingPrice: shippingCost,
+        });
+        setOrderId(res.data.order._id);
+        setSuccess(true);
+      }
+    } catch (e) {
       setInitError("Failed to initialise payment. Please try again.");
     } finally {
       setPayLoading(false);
@@ -206,7 +222,14 @@ export default function BuyNow() {
   };
 
   const handleSaveAddress = async () => {
-    if (!addrForm.street || !addrForm.city || !addrForm.state || !addrForm.zipCode || !addrForm.country) return;
+    const result = addressSchema.safeParse(addrForm);
+    if (!result.success) {
+      const errs: Record<string, string> = {};
+      result.error.errors.forEach((e) => { if (e.path[0]) errs[String(e.path[0])] = e.message; });
+      setAddrErrors(errs);
+      return;
+    }
+    setAddrErrors({});
     setAddrSaving(true);
     try {
       const res = await authService.addAddress(addrForm);
@@ -334,7 +357,10 @@ export default function BuyNow() {
                         >{l}</button>
                       ))}
                     </div>
-                    <input className={inputCls} placeholder="Phone (optional)" value={addrForm.phone ?? ""} onChange={(e) => setAddrForm((f) => ({ ...f, phone: e.target.value }))} />
+                    <div>
+                      <input className={inputCls} placeholder="Phone Number *" value={addrForm.phone ?? ""} onChange={(e) => { setAddrForm((f) => ({ ...f, phone: e.target.value })); setAddrErrors((p) => ({ ...p, phone: "" })); }} />
+                      {addrErrors.phone ? <p className="text-destructive text-[10px]">{addrErrors.phone}</p> : <p className="text-muted-foreground text-[10px]">e.g. 9876543210</p>}
+                    </div>
                     <input className={inputCls} placeholder="Street address *" value={addrForm.street} onChange={(e) => setAddrForm((f) => ({ ...f, street: e.target.value }))} />
                     <div className="grid grid-cols-2 gap-2">
                       <input className={inputCls} placeholder="City *" value={addrForm.city} onChange={(e) => setAddrForm((f) => ({ ...f, city: e.target.value }))} />
@@ -371,11 +397,26 @@ export default function BuyNow() {
                         <p className="text-xs text-muted-foreground">{opt.days}</p>
                       </div>
                       <span className={`text-sm font-bold ${opt.price === 0 ? "text-green-600" : ""}`}>
-                        {opt.price === 0 ? "Free" : `$${opt.price.toFixed(2)}`}
+                        {opt.price === 0 ? "Free" : formatCurrency(opt.price)}
                       </span>
                     </div>
                   </button>
                 ))}
+              </div>
+
+              {/* Payment method */}
+              <div className="bg-white rounded-2xl border border-border p-5 shadow-sm space-y-3">
+                <h2 className="font-bold text-sm">Payment Method</h2>
+                <div className="flex flex-col gap-2">
+                  <label className={`p-3 rounded-xl border-2 cursor-pointer ${paymentMethod === "card" ? "border-primary bg-primary/5" : "border-border"}`}>
+                    <input type="radio" name="pm" className="mr-2" checked={paymentMethod === "card"} onChange={() => setPaymentMethod("card")} />
+                    Pay by card (Stripe)
+                  </label>
+                  <label className={`p-3 rounded-xl border-2 cursor-pointer ${paymentMethod === "cod" ? "border-primary bg-primary/5" : "border-border"}`}>
+                    <input type="radio" name="pm" className="mr-2" checked={paymentMethod === "cod"} onChange={() => setPaymentMethod("cod")} />
+                    Cash on Delivery (Pay when the item is delivered)
+                  </label>
+                </div>
               </div>
 
               {initError && (
@@ -443,7 +484,7 @@ export default function BuyNow() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold leading-snug">{product.name}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">Qty: {quantity}</p>
-                <p className="text-sm font-bold text-primary mt-1">${(product.price * quantity).toFixed(2)}</p>
+                <p className="text-sm font-bold text-primary mt-1">{formatCurrency(product.price * quantity)}</p>
               </div>
             </div>
           </div>
@@ -467,21 +508,21 @@ export default function BuyNow() {
             <div className="space-y-1.5 text-xs">
               <div className="flex justify-between text-muted-foreground">
                 <span>Price ({quantity} item{quantity > 1 ? "s" : ""})</span>
-                <span>${itemsPrice.toFixed(2)}</span>
+                <span>{formatCurrency(itemsPrice)}</span>
               </div>
               <div className="flex justify-between text-muted-foreground">
                 <span>Delivery</span>
                 <span className={shippingCost === 0 ? "text-green-600" : ""}>
-                  {shippingCost === 0 ? "Free" : `$${shippingCost.toFixed(2)}`}
+                  {shippingCost === 0 ? "Free" : formatCurrency(shippingCost)}
                 </span>
               </div>
               <div className="flex justify-between text-muted-foreground">
                 <span>Tax (8%)</span>
-                <span>${taxPrice.toFixed(2)}</span>
+                <span>{formatCurrency(taxPrice)}</span>
               </div>
               <div className="flex justify-between font-bold border-t border-border pt-2 text-sm">
                 <span>Total Amount</span>
-                <span className="text-primary">${totalPrice.toFixed(2)}</span>
+                <span className="text-primary">{formatCurrency(totalPrice)}</span>
               </div>
             </div>
           </div>

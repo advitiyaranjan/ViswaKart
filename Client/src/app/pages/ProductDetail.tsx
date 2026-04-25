@@ -1,6 +1,7 @@
 import { useParams, Link, useNavigate } from "react-router";
 import { Star, ShoppingCart, Check, Heart, Share2, Truck, Shield, RotateCcw, ThumbsUp, AlertCircle, Zap, MapPin, CheckCircle2, Search, ChevronDown, ChevronUp, Package, Link2 } from "lucide-react";
 import { Button } from "../components/Button";
+import { formatCurrency } from "../../lib/currency";
 import { ProductCard } from "../components/ProductCard";
 import { productService } from "../../services/productService";
 import { useCart } from "../../context/CartContext";
@@ -233,6 +234,7 @@ export default function ProductDetail() {
   const mrp = getMRP(product.price, product._id);
   const discPct = seededDiscount(product._id);
   const specs = getSpecs(product);
+  const sellerSpecs = (product as any).specifications;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -305,8 +307,8 @@ export default function ProductDetail() {
 
           {/* Price */}
           <div className="flex items-baseline gap-3 mb-5">
-            <span className="text-3xl font-extrabold text-foreground">${product.price.toFixed(2)}</span>
-            <span className="text-lg text-muted-foreground line-through">MRP ${mrp.toFixed(2)}</span>
+            <span className="text-3xl font-extrabold text-foreground">{formatCurrency(product.price)}</span>
+            <span className="text-lg text-muted-foreground line-through">MRP {formatCurrency(mrp)}</span>
             <span className="px-2.5 py-0.5 bg-green-500 text-white rounded-full text-sm font-bold">{discPct}% off</span>
           </div>
 
@@ -445,7 +447,7 @@ export default function ProductDetail() {
               </div>
               <div>
                 <div className="font-medium text-xs">Free Shipping</div>
-                <div className="text-xs text-muted-foreground">Orders over $50</div>
+                <div className="text-xs text-muted-foreground">Orders over {formatCurrency(50)}</div>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -483,16 +485,34 @@ export default function ProductDetail() {
         </button>
         {specsOpen && (
           <div className="border-t border-border">
-            <table className="w-full text-sm">
-              <tbody>
-                {Object.entries(specs).map(([key, val], i) => (
-                  <tr key={key} className={i % 2 === 0 ? "bg-slate-50/60" : "bg-white"}>
-                    <td className="px-6 py-3 font-medium text-muted-foreground w-40 sm:w-56">{key}</td>
-                    <td className="px-6 py-3 text-foreground">{val}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {sellerSpecs ? (
+              // If seller provided specifications, show them as-is.
+              typeof sellerSpecs === "string" ? (
+                <div className="p-4 text-sm text-foreground whitespace-pre-wrap">{sellerSpecs}</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <tbody>
+                    {Object.entries(sellerSpecs).map(([key, val], i) => (
+                      <tr key={key} className={i % 2 === 0 ? "bg-slate-50/60" : "bg-white"}>
+                        <td className="px-6 py-3 font-medium text-muted-foreground w-40 sm:w-56">{key}</td>
+                        <td className="px-6 py-3 text-foreground">{String(val)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+            ) : (
+              <table className="w-full text-sm">
+                <tbody>
+                  {Object.entries(specs).map(([key, val], i) => (
+                    <tr key={key} className={i % 2 === 0 ? "bg-slate-50/60" : "bg-white"}>
+                      <td className="px-6 py-3 font-medium text-muted-foreground w-40 sm:w-56">{key}</td>
+                      <td className="px-6 py-3 text-foreground">{val}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
       </div>

@@ -5,7 +5,7 @@ export const addressSchema = z.object({
   phone: z
     .string()
     .min(1, "Phone is required")
-    .regex(/^\+?[0-9\s\-().]{7,15}$/, "Enter a valid phone number"),
+    .regex(/^[0-9]{7,15}$/, "Enter a valid phone number (digits only)"),
   street: z.string().min(3, "Street address is required"),
   city: z.string().min(1, "City is required"),
   state: z.string().min(1, "State is required"),
@@ -24,7 +24,7 @@ export const guestAddressSchema = z.object({
   phone: z
     .string()
     .min(1, "Phone is required")
-    .regex(/^\+?[0-9\s\-().]{7,15}$/, "Enter a valid phone number"),
+    .regex(/^[0-9]{7,15}$/, "Enter a valid phone number (digits only)"),
   street: z.string().min(3, "Street address is required"),
   city: z.string().min(1, "City is required"),
   state: z.string().min(1, "State is required"),

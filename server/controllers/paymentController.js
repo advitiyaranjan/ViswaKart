@@ -27,11 +27,12 @@ exports.createPaymentIntent = async (req, res) => {
 
   const taxPrice = itemsPrice * 0.08;
   const total = itemsPrice - couponDiscount + shippingPrice + taxPrice;
-  const amountInCents = Math.round(total * 100);
+  // Stripe expects amount in the smallest currency unit (paise for INR)
+  const amountInPaise = Math.round(total * 100);
 
   const paymentIntent = await stripe.paymentIntents.create({
-    amount: amountInCents,
-    currency: "usd",
+    amount: amountInPaise,
+    currency: "inr",
     automatic_payment_methods: { enabled: true },
     metadata: { userId: req.user._id.toString() },
   });

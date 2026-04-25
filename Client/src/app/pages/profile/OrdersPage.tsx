@@ -10,6 +10,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { orderService } from "../../../services/orderService";
+import { formatCurrency } from "../../../lib/currency";
 
 interface OrderItem {
   product: string;
@@ -57,6 +58,34 @@ export default function OrdersPage() {
       .then((res) => setOrders(res.data.orders ?? []))
       .catch(() => {})
       .finally(() => setLoading(false));
+  }, []);
+
+  // Refresh orders when any order item update occurs in this session
+  useEffect(() => {
+    const handler = (e: any) => {
+      setLoading(true);
+      orderService
+        .getMyOrders({ limit: 50 })
+        .then((res) => setOrders(res.data.orders ?? []))
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    };
+    window.addEventListener("order:itemUpdated", handler as EventListener);
+    const storageHandler = (ev: StorageEvent) => {
+      if (ev.key === "order:update") {
+        setLoading(true);
+        orderService
+          .getMyOrders({ limit: 50 })
+          .then((res) => setOrders(res.data.orders ?? []))
+          .catch(() => {})
+          .finally(() => setLoading(false));
+      }
+    };
+    window.addEventListener("storage", storageHandler);
+    return () => {
+      window.removeEventListener("order:itemUpdated", handler as EventListener);
+      window.removeEventListener("storage", storageHandler);
+    };
   }, []);
 
   return (
@@ -110,7 +139,7 @@ export default function OrdersPage() {
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Total</p>
-                      <p className="text-sm font-bold text-primary">${order.totalPrice.toFixed(2)}</p>
+                      <p className="text-sm font-bold text-primary">{formatCurrency(order.totalPrice)}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -141,7 +170,7 @@ export default function OrdersPage() {
                             <p className="text-sm font-medium truncate">{item.name}</p>
                             <p className="text-xs text-muted-foreground">Qty: {item.quantity}</p>
                           </div>
-                          <p className="text-sm font-semibold">${(item.price * item.quantity).toFixed(2)}</p>
+                          <p className="text-sm font-semibold">{formatCurrency(item.price * item.quantity)}</p>
                         </div>
                       ))}
                     </div>
@@ -150,19 +179,19 @@ export default function OrdersPage() {
                     <div className="rounded-lg bg-white border border-border p-3 space-y-1.5 text-sm">
                       <div className="flex justify-between text-muted-foreground">
                         <span>Subtotal</span>
-                        <span>${order.itemsPrice.toFixed(2)}</span>
+                        <span>{formatCurrency(order.itemsPrice)}</span>
                       </div>
                       <div className="flex justify-between text-muted-foreground">
                         <span>Shipping</span>
-                        <span>{order.shippingPrice === 0 ? "Free" : `$${order.shippingPrice.toFixed(2)}`}</span>
+                        <span>{order.shippingPrice === 0 ? "Free" : formatCurrency(order.shippingPrice)}</span>
                       </div>
                       <div className="flex justify-between text-muted-foreground">
                         <span>Tax</span>
-                        <span>${order.taxPrice.toFixed(2)}</span>
+                        <span>{formatCurrency(order.taxPrice)}</span>
                       </div>
                       <div className="flex justify-between font-bold border-t border-border pt-1.5">
                         <span>Total</span>
-                        <span className="text-primary">${order.totalPrice.toFixed(2)}</span>
+                        <span className="text-primary">{formatCurrency(order.totalPrice)}</span>
                       </div>
                     </div>
 

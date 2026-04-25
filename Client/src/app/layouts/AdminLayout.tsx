@@ -22,6 +22,7 @@ const navItems = [
   { path: "/admin/categories", label: "Categories", icon: FolderTree },
   { path: "/admin/orders", label: "Orders", icon: ShoppingBag },
   { path: "/admin/users", label: "Users", icon: Users },
+  { path: "/admin/seller-requests", label: "Seller Requests", icon: Users },
   { path: "/admin/support", label: "Support", icon: MessageCircle },
 ];
 

@@ -68,6 +68,30 @@ const userSchema = new mongoose.Schema(
     wishlist: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }],
     resetPasswordToken: String,
     resetPasswordExpire: Date,
+    // Seller fields
+    isSeller: {
+      type: Boolean,
+      default: false,
+    },
+    sellerApproved: {
+      type: Boolean,
+      default: false,
+    },
+    sellerRequested: {
+      type: Boolean,
+      default: false,
+    },
+    sellerRequestedAt: Date,
+    sellerApprovedAt: Date,
+    // Profile info provided by seller when listing products
+    sellerProfile: {
+      name: { type: String, default: "" },
+      hostelNumber: { type: String, default: "" },
+      roomNumber: { type: String, default: "" },
+      courseYear: { type: String, default: "" },
+      mobileNumber: { type: String, default: "" },
+    },
+    sellerRequestMessage: { type: String, default: "" },
   },
   { timestamps: true }
 );

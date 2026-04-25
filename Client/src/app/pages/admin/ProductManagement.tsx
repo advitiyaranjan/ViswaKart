@@ -3,6 +3,7 @@ import { Plus, Search, Edit, Trash2, Eye } from "lucide-react";
 import { Button } from "../../components/Button";
 import { productService, categoryService } from "../../../services/productService";
 import { Link } from "react-router";
+import { formatCurrency } from "../../../lib/currency";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { productSchema, ProductFormValues } from "../../../lib/validationSchemas";
@@ -172,7 +173,7 @@ export default function ProductManagement() {
                     </div>
                   </td>
                   <td className="px-6 py-4">{product.category?.name}</td>
-                  <td className="px-6 py-4 font-medium">${product.price.toFixed(2)}</td>
+                  <td className="px-6 py-4 font-medium">{formatCurrency(product.price)}</td>
                   <td className="px-6 py-4">
                     <span
                       className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${

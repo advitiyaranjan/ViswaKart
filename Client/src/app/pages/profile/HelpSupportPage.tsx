@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "../../components/Button";
 import api from "../../../services/api";
+import { formatCurrency } from "../../../lib/currency";
 
 interface FAQ {
   q: string;
@@ -50,7 +51,7 @@ const FAQS: FAQ[] = [
   {
     topic: "Shipping",
     q: "Do you offer free shipping?",
-    a: "Yes! Orders above $50 qualify for free standard shipping. Express and overnight options are available at an additional cost.",
+    a: "Yes! Orders above " + formatCurrency(50) + " qualify for free standard shipping. Express and overnight options are available at an additional cost.",
   },
   {
     topic: "Orders",

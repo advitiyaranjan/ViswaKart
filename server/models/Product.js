@@ -42,6 +42,18 @@ const productSchema = new mongoose.Schema(
       min: [0, "Stock cannot be negative"],
       default: 0,
     },
+    // Seller / marketplace fields
+    seller: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    // Contact snapshot copied from the seller at time of listing
+    sellerEmail: { type: String, lowercase: true, index: true, sparse: true },
+    sellerMobile: { type: String, index: true, sparse: true },
+    // Seller location snapshot
+    sellerHostelNumber: { type: String, default: "", index: true, sparse: true },
+    sellerRoomNumber: { type: String, default: "", index: true, sparse: true },
+    specifications: { type: mongoose.Schema.Types.Mixed },
+    productAge: { type: String, default: "" },
+    discount: { type: Number, default: 0 },
+    sold: { type: Boolean, default: false },
     ratings: { type: Number, default: 0 },
     numReviews: { type: Number, default: 0 },
     reviews: [reviewSchema],

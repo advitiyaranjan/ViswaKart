@@ -6,6 +6,19 @@ const PORT = process.env.PORT || 5000;
 const startServer = async () => {
   await connectDB();
 
+  // Dev-only: watch product collection for changes to aid debugging
+  if (process.env.NODE_ENV === "development") {
+    try {
+      const Product = require("./models/Product");
+      const changeStream = Product.watch([], { fullDocument: "updateLookup" });
+      changeStream.on("change", (change) => {
+        console.log("[PRODUCT_CHANGE]", JSON.stringify(change));
+      });
+    } catch (err) {
+      console.warn("[PRODUCT_CHANGE] Change stream unavailable:", err.message || err);
+    }
+  }
+
   const server = app.listen(PORT, () => {
     console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
   });

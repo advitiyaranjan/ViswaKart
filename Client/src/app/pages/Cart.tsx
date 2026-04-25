@@ -7,6 +7,7 @@ import { authService, AddressData } from "../../services/authService";
 import { motion, AnimatePresence } from "motion/react";
 import { useState, useEffect } from "react";
 import { addressSchema, guestAddressSchema } from "../../lib/validationSchemas";
+import { formatCurrency } from "../../lib/currency";
 
 interface SavedAddress {
   _id: string;
@@ -337,16 +338,16 @@ export default function Cart() {
                           {/* Price + MRP */}
                           <div className="text-right">
                             <div className="text-lg font-bold text-foreground">
-                              ${(item.price * item.quantity).toFixed(2)}
-                            </div>
-                            <div className="text-xs text-muted-foreground line-through">
-                              MRP ${(mrp * item.quantity).toFixed(2)}
-                            </div>
-                            {item.quantity > 1 && (
-                              <div className="text-xs text-muted-foreground">
-                                ${item.price.toFixed(2)} each
+                                {formatCurrency(item.price * item.quantity)}
                               </div>
-                            )}
+                              <div className="text-xs text-muted-foreground line-through">
+                                MRP {formatCurrency(mrp * item.quantity)}
+                              </div>
+                              {item.quantity > 1 && (
+                                <div className="text-xs text-muted-foreground">
+                                  {formatCurrency(item.price)} each
+                                </div>
+                              )}
                           </div>
                         </div>
                       </div>
@@ -360,7 +361,7 @@ export default function Cart() {
             <div className="bg-green-50 border border-green-200 rounded-2xl p-4 flex items-center gap-3">
               <Zap className="w-5 h-5 text-green-600 flex-shrink-0" />
               <span className="text-sm font-medium text-green-700">
-                You're saving <span className="font-bold">${productDiscount.toFixed(2)}</span> on MRP with your cart items!
+                You're saving <span className="font-bold">{formatCurrency(productDiscount)}</span> on MRP with your cart items!
               </span>
             </div>
 
@@ -370,7 +371,7 @@ export default function Cart() {
                 <div className="flex items-center gap-2 mb-2">
                   <Truck className="w-4 h-4 text-primary" />
                   <span className="text-sm font-medium">
-                    Add <span className="text-primary font-bold">${(50 - subtotal).toFixed(2)}</span> more to unlock free Standard shipping
+                    Add <span className="text-primary font-bold">{formatCurrency(50 - subtotal)}</span> more to unlock free Standard shipping
                   </span>
                 </div>
                 <div className="w-full bg-slate-100 rounded-full h-1.5">
@@ -491,7 +492,7 @@ export default function Cart() {
                               onChange={(e) => { setAddrForm((p) => ({ ...p, phone: e.target.value })); setAddrErrors((p) => ({ ...p, phone: "" })); }}
                               onBlur={(e) => validateAddrField("phone", e.target.value)}
                               className={`w-full px-2.5 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 ${addrErrors.phone ? "border-destructive" : "border-border"}`} />
-                            {addrErrors.phone ? <p className="text-destructive text-[10px]">{addrErrors.phone}</p> : <p className="text-muted-foreground text-[10px]">e.g. +91 98765 43210</p>}
+                            {addrErrors.phone ? <p className="text-destructive text-[10px]">{addrErrors.phone}</p> : <p className="text-muted-foreground text-[10px]">e.g. 9876543210</p>}
                             <input placeholder="Street Address *" value={addrForm.street}
                               onChange={(e) => { setAddrForm((p) => ({ ...p, street: e.target.value })); setAddrErrors((p) => ({ ...p, street: "" })); }}
                               onBlur={(e) => validateAddrField("street", e.target.value)}
@@ -614,7 +615,7 @@ export default function Cart() {
                               </div>
                               {([
                                 { key: "name", placeholder: "Full name *", type: "text", hint: "" },
-                                { key: "phone", placeholder: "Phone number *", type: "tel", hint: "e.g. +91 98765 43210" },
+                                { key: "phone", placeholder: "Phone number *", type: "tel", hint: "e.g. 9876543210" },
                                 { key: "street", placeholder: "Street address *", type: "text", hint: "" },
                                 { key: "city", placeholder: "City *", type: "text", hint: "" },
                                 { key: "state", placeholder: "State *", type: "text", hint: "" },
@@ -694,7 +695,7 @@ export default function Cart() {
                           <div className="flex items-center justify-between">
                               <span className="text-xs font-medium">{opt.label}</span>
                               <span className={`text-xs font-bold ${cost === 0 ? "text-green-600" : ""}`}>
-                                {cost === 0 ? "Free" : `$${cost.toFixed(2)}`}
+                                {cost === 0 ? "Free" : formatCurrency(cost)}
                               </span>
                             </div>
                             <div className="text-xs text-muted-foreground">{estDate}</div>
@@ -709,40 +710,40 @@ export default function Cart() {
               <div className="space-y-1.5 text-sm border-t border-border pt-3">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">MRP Total</span>
-                  <span className="line-through text-muted-foreground">${mrpTotal.toFixed(2)}</span>
+                  <span className="line-through text-muted-foreground">{formatCurrency(mrpTotal)}</span>
                 </div>
                 <div className="flex justify-between text-green-600">
                   <span>Product Discount</span>
-                  <span className="font-medium">−${productDiscount.toFixed(2)}</span>
+                  <span className="font-medium">−{formatCurrency(productDiscount)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Subtotal</span>
-                  <span className="font-medium">${subtotal.toFixed(2)}</span>
+                  <span className="font-medium">{formatCurrency(subtotal)}</span>
                 </div>
                 {appliedPromo && (
                   <div className="flex justify-between text-green-600">
                     <span className="flex items-center gap-1">
                       <BadgePercent className="w-3.5 h-3.5" /> Coupon ({appliedPromo.pct}%)
                     </span>
-                    <span className="font-medium">−${couponDiscount.toFixed(2)}</span>
+                    <span className="font-medium">−{formatCurrency(couponDiscount)}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Shipping</span>
                   <span className={`font-medium ${shippingCost === 0 ? "text-green-600" : ""}`}>
-                    {shippingCost === 0 ? "Free" : `$${shippingCost.toFixed(2)}`}
+                    {shippingCost === 0 ? "Free" : formatCurrency(shippingCost)}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Tax (8%)</span>
-                  <span className="font-medium">${tax.toFixed(2)}</span>
+                  <span className="font-medium">{formatCurrency(tax)}</span>
                 </div>
                 <div className="border-t border-border pt-2 flex justify-between items-center">
                   <span className="font-bold text-sm">Total</span>
-                  <span className="font-extrabold text-xl text-primary">${total.toFixed(2)}</span>
+                  <span className="font-extrabold text-xl text-primary">{formatCurrency(total)}</span>
                 </div>
                 <p className="text-xs text-green-600 font-medium text-right">
-                  Total savings: ${(productDiscount + couponDiscount).toFixed(2)}
+                  Total savings: {formatCurrency(productDiscount + couponDiscount)}
                 </p>
               </div>
 

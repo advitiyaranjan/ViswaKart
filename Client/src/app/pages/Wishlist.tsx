@@ -5,6 +5,7 @@ import { productService } from "../../services/productService";
 import { useCart } from "../../context/CartContext";
 import { useWishlist } from "../../context/WishlistContext";
 import { Button } from "../components/Button";
+import { formatCurrency } from "../../lib/currency";
 
 interface Product {
   _id: string;
@@ -131,8 +132,8 @@ export default function Wishlist() {
                     </h3>
                   </Link>
                   <div className="flex items-baseline gap-2 mb-3">
-                    <span className="text-lg font-extrabold">${product.price.toFixed(2)}</span>
-                    <span className="text-xs text-muted-foreground line-through">${mrp.toFixed(2)}</span>
+                    <span className="text-lg font-extrabold">{formatCurrency(product.price)}</span>
+                    <span className="text-xs text-muted-foreground line-through">{formatCurrency(mrp)}</span>
                   </div>
                   <Button
                     variant="primary"

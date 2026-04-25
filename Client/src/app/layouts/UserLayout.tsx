@@ -1,15 +1,19 @@
 import { Outlet, Link, useLocation, useNavigate } from "react-router";
-import { Search, ShoppingCart, ShoppingBag, User, Menu, X, LayoutDashboard, ArrowLeft, Heart } from "lucide-react";
+import { Search, ShoppingCart, ShoppingBag, User, Menu, X, LayoutDashboard, ArrowLeft, Heart, Truck } from "lucide-react";
 import { Button } from "../components/Button";
 import { useState, useEffect, useRef } from "react";
 import { useCart } from "../../context/CartContext";
 import { useAuth } from "../../context/AuthContext";
 import { categoryService, productService } from "../../services/productService";
 import { UserButton, SignInButton, useUser } from "@clerk/react";
+import { formatCurrency } from "../../lib/currency";
 import { MapPin, ShoppingBag as OrdersIcon, HelpCircle } from "lucide-react";
 import AddressesPage from "../pages/profile/AddressesPage";
 import OrdersPage from "../pages/profile/OrdersPage";
 import HelpSupportPage from "../pages/profile/HelpSupportPage";
+import SellProductPage from "../pages/profile/SellProductPage";
+import SellerOrdersPage from "../pages/profile/SellerOrdersPage";
+import DonateUsPage from "../pages/profile/DonateUsPage";
 
 interface Category { _id: string; name: string; slug: string; }
 
@@ -131,7 +135,7 @@ export default function UserLayout() {
                               />
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium text-foreground line-clamp-1">{p.name}</p>
-                                <p className="text-sm font-bold text-primary">${p.price.toFixed(2)}</p>
+                                <p className="text-sm font-bold text-primary">{formatCurrency(p.price)}</p>
                               </div>
                             </Link>
                           ))}
@@ -200,12 +204,34 @@ export default function UserLayout() {
                     >
                       <OrdersPage />
                     </UserButton.UserProfilePage>
+
+                    <UserButton.UserProfilePage
+                      label="Seller Orders"
+                      url="seller-orders"
+                      labelIcon={<Truck className="w-4 h-4" />}
+                    >
+                      <SellerOrdersPage />
+                    </UserButton.UserProfilePage>
                     <UserButton.UserProfilePage
                       label="Help & Support"
                       url="help"
                       labelIcon={<HelpCircle className="w-4 h-4" />}
                     >
                       <HelpSupportPage />
+                    </UserButton.UserProfilePage>
+                    <UserButton.UserProfilePage
+                      label="Sell a Product"
+                      url="sell"
+                      labelIcon={<ShoppingBag className="w-4 h-4" />}
+                    >
+                      <SellProductPage />
+                    </UserButton.UserProfilePage>
+                    <UserButton.UserProfilePage
+                      label="Donate Us"
+                      url="donate"
+                      labelIcon={<Heart className="w-4 h-4" />}
+                    >
+                      <DonateUsPage />
                     </UserButton.UserProfilePage>
                   </UserButton>
                   <span className="hidden md:block text-sm font-medium text-muted-foreground">

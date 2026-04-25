@@ -11,7 +11,9 @@ import { ShoppingBag, MapPin, Truck, Lock, ChevronLeft, CheckCircle2 } from "luc
 import { useCart } from "../../context/CartContext";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../services/api";
+import { orderService } from "../../services/orderService";
 import { Button } from "../components/Button";
+import { formatCurrency } from "../../lib/currency";
 
 const stripePromise = loadStripe((import.meta as any).env.VITE_STRIPE_PUBLISHABLE_KEY);
 
@@ -135,6 +137,7 @@ export default function Checkout() {
   const [initError, setInitError] = useState("");
   const [success, setSuccess] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
+  const [placingCod, setPlacingCod] = useState(false);
 
   // Determine which items are being checked out
   const checkoutItemIds = checkoutState?.selectedItemIds;
@@ -166,6 +169,26 @@ export default function Checkout() {
     removeItems?.(checkoutItems.map((i: any) => i._id));
     setOrderId(id);
     setSuccess(true);
+  };
+
+  const handlePlaceCod = async () => {
+    if (!checkoutItems || checkoutItems.length === 0) return;
+    setPlacingCod(true);
+    try {
+      const res = await orderService.createOrder({
+        items: checkoutItems.map((i: any) => ({ product: i._id, quantity: i.quantity })),
+        shippingAddress: checkoutState.selectedAddr,
+        paymentMethod: "cod",
+      });
+      // remove items and mark success
+      removeItems?.(checkoutItems.map((i: any) => i._id));
+      setOrderId(res.data.order._id);
+      setSuccess(true);
+    } catch (err) {
+      alert("Failed to place COD order. Please try again.");
+    } finally {
+      setPlacingCod(false);
+    }
   };
 
   // ── Success screen ───────────────────────────────────────────────────────
@@ -229,21 +252,36 @@ export default function Checkout() {
               </div>
             ) : initError ? (
               <div className="text-sm text-destructive">{initError}</div>
-            ) : clientSecret ? (
-              <Elements
-                stripe={stripePromise}
-                options={{ clientSecret, appearance: { theme: "stripe" } }}
-              >
-                <PaymentForm
-                  clientSecret={clientSecret}
-                  paymentIntentId={paymentIntentId!}
-                  shippingAddress={addr}
-                  breakdown={breakdown}
-                  cartItems={checkoutItems.map((i: any) => ({ product: i._id, quantity: i.quantity }))}
-                  onSuccess={handleSuccess}
-                />
-              </Elements>
-            ) : null}
+            ) : (
+              <>
+                {clientSecret ? (
+                  <Elements
+                    stripe={stripePromise}
+                    options={{ clientSecret, appearance: { theme: "stripe" } }}
+                  >
+                    <PaymentForm
+                      clientSecret={clientSecret}
+                      paymentIntentId={paymentIntentId!}
+                      shippingAddress={addr}
+                      breakdown={breakdown}
+                      cartItems={checkoutItems.map((i: any) => ({ product: i._id, quantity: i.quantity }))}
+                      onSuccess={handleSuccess}
+                    />
+                  </Elements>
+                ) : null}
+
+                {/* Cash on Delivery option */}
+                <div className="mt-4">
+                  <Button
+                    className="w-full"
+                    onClick={handlePlaceCod}
+                    disabled={placingCod}
+                  >
+                    {placingCod ? "Placing order…" : "Pay with Cash on Delivery (COD)"}
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -279,7 +317,7 @@ export default function Checkout() {
                     <p className="text-xs font-medium truncate">{item.name}</p>
                     <p className="text-xs text-muted-foreground">Qty: {item.quantity}</p>
                   </div>
-                  <p className="text-xs font-semibold">${(item.price * item.quantity).toFixed(2)}</p>
+                  <p className="text-xs font-semibold">{formatCurrency(item.price * item.quantity)}</p>
                 </div>
               ))}
             </div>
@@ -288,25 +326,25 @@ export default function Checkout() {
             {breakdown && (
               <div className="border-t border-border mt-3 pt-3 space-y-1.5 text-xs">
                 <div className="flex justify-between text-muted-foreground">
-                  <span>Subtotal</span><span>${breakdown.itemsPrice.toFixed(2)}</span>
+                  <span>Subtotal</span><span>{formatCurrency(breakdown.itemsPrice)}</span>
                 </div>
                 {breakdown.couponDiscount > 0 && (
                   <div className="flex justify-between text-green-600">
-                    <span>Discount</span><span>−${breakdown.couponDiscount.toFixed(2)}</span>
+                      <span>Discount</span><span>−{formatCurrency(breakdown.couponDiscount)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-muted-foreground">
                   <span>Shipping</span>
-                  <span className={breakdown.shippingPrice === 0 ? "text-green-600" : ""}>
-                    {breakdown.shippingPrice === 0 ? "Free" : `$${breakdown.shippingPrice.toFixed(2)}`}
-                  </span>
+                    <span className={breakdown.shippingPrice === 0 ? "text-green-600" : ""}>
+                      {breakdown.shippingPrice === 0 ? "Free" : formatCurrency(breakdown.shippingPrice)}
+                    </span>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
-                  <span>Tax (8%)</span><span>${breakdown.taxPrice.toFixed(2)}</span>
+                    <span>Tax (8%)</span><span>{formatCurrency(breakdown.taxPrice)}</span>
                 </div>
                 <div className="flex justify-between font-bold border-t border-border pt-1.5 text-sm">
                   <span>Total</span>
-                  <span className="text-primary">${breakdown.totalPrice.toFixed(2)}</span>
+                    <span className="text-primary">{formatCurrency(breakdown.totalPrice)}</span>
                 </div>
               </div>
             )}
@@ -317,7 +355,7 @@ export default function Checkout() {
             <div className="bg-white rounded-2xl border border-border p-4 shadow-sm">
               <p className="text-xs font-semibold flex items-center gap-1.5">
                 <Truck className="w-4 h-4 text-primary" />
-                {checkoutState.shippingCost === 0 ? "Free Standard Delivery" : `Delivery: $${checkoutState.shippingCost.toFixed(2)}`}
+               {checkoutState.shippingCost === 0 ? "Free Standard Delivery" : `Delivery: ${formatCurrency(checkoutState.shippingCost)}`}
               </p>
             </div>
           )}

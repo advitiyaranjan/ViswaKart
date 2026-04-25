@@ -85,6 +85,82 @@ exports.updateUser = async (req, res) => {
   res.status(200).json({ success: true, user });
 };
 
+// @desc    Request seller access (private)
+// @route   POST /api/users/seller-request
+// @access  Private
+exports.requestSellerAccess = async (req, res) => {
+  const { name, hostelNumber, courseYear, mobileNumber, message } = req.body;
+  const user = await User.findById(req.user.id);
+  if (!user) return res.status(404).json({ success: false, message: "User not found" });
+  // Debug: log incoming mobileNumber to help diagnose trimming issues
+  try { console.log('[USER] requestSellerAccess incoming mobileNumber:', mobileNumber); } catch (e) {}
+
+  user.sellerRequested = true;
+  user.sellerRequestedAt = Date.now();
+  const rawMobile = String(mobileNumber || user.sellerProfile?.mobileNumber || "").trim().replace(/\D/g, "");
+  user.sellerProfile = {
+    name: name || user.name,
+    hostelNumber: hostelNumber || user.sellerProfile?.hostelNumber || "",
+    courseYear: courseYear || user.sellerProfile?.courseYear || "",
+    mobileNumber: rawMobile,
+  };
+  user.sellerRequestMessage = message || "";
+
+  await user.save();
+  try { console.log('[USER] requestSellerAccess saved sellerProfile.mobileNumber:', user.sellerProfile?.mobileNumber); } catch (e) {}
+
+  res.status(200).json({ success: true, message: "Seller access requested" });
+};
+
+// @desc    Get all seller requests (admin)
+// @route   GET /api/users/seller-requests
+// @access  Admin
+exports.getSellerRequests = async (req, res) => {
+  const { page = 1, limit = 50 } = req.query;
+  const skip = (Number(page) - 1) * Number(limit);
+
+  const query = { sellerRequested: true };
+
+  const [users, total] = await Promise.all([
+    User.find(query).sort("-sellerRequestedAt").skip(skip).limit(Number(limit)),
+    User.countDocuments(query),
+  ]);
+
+  res.status(200).json({ success: true, total, page: Number(page), users });
+};
+
+// @desc    Approve seller request (admin)
+// @route   PUT /api/users/:id/seller-approve
+// @access  Admin
+exports.approveSellerRequest = async (req, res) => {
+  const user = await User.findById(req.params.id);
+  if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+  user.isSeller = true;
+  user.sellerApproved = true;
+  user.sellerApprovedAt = Date.now();
+  user.sellerRequested = false;
+  await user.save();
+
+  res.status(200).json({ success: true, user });
+};
+
+// @desc    Reject seller request (admin)
+// @route   PUT /api/users/:id/seller-reject
+// @access  Admin
+exports.rejectSellerRequest = async (req, res) => {
+  const user = await User.findById(req.params.id);
+  if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+  user.sellerRequested = false;
+  user.sellerApproved = false;
+  user.isSeller = false;
+  user.sellerRequestMessage = req.body?.reason || user.sellerRequestMessage || "";
+  await user.save();
+
+  res.status(200).json({ success: true, user });
+};
+
 // @desc    Delete user (admin)
 // @route   DELETE /api/users/:id
 // @access  Admin
