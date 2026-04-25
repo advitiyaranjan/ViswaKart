@@ -238,6 +238,9 @@ export default function ProductListing() {
                   name={product.name}
                   price={product.price}
                   originalPrice={product.originalPrice}
+                  discount={product.discount}
+                  seller={product.seller}
+                  sellerEmail={product.sellerEmail}
                   rating={product.ratings}
                   reviews={product.numReviews}
                   image={product.images[0] || ""}

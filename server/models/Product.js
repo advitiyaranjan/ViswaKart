@@ -71,6 +71,33 @@ productSchema.pre("save", function (next) {
   next();
 });
 
+// Ensure images is always an array and originalPrice is populated
+productSchema.pre("save", function (next) {
+  // images default
+  if (!Array.isArray(this.images)) {
+    this.images = Array.isArray(this.images) ? this.images : [];
+  }
+
+  // If originalPrice is missing, try to derive it.
+  // If a discount exists and price appears to be the discounted value, compute originalPrice.
+  if ((this.originalPrice === undefined || this.originalPrice === null) && this.discount) {
+    const d = Number(this.discount) || 0;
+    if (d > 0 && d < 100 && this.price != null) {
+      // derive MRP from stored price (assumed discounted)
+      try {
+        const mrp = Number((Number(this.price) / (1 - d / 100)).toFixed(2));
+        this.originalPrice = mrp;
+      } catch (err) {
+        this.originalPrice = this.price;
+      }
+    } else if (this.price != null) {
+      this.originalPrice = this.price;
+    }
+  }
+
+  next();
+});
+
 // Recalculate average rating when a review is added/removed
 productSchema.methods.calcAverageRatings = function () {
   if (this.reviews.length === 0) {

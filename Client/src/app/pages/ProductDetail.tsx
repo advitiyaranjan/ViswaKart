@@ -45,7 +45,7 @@ function checkPinDeliverability(pin: string): "deliverable" | "not-deliverable" 
 // ── Product specifications (seeded by category) ───────────────────────────────
 function getSpecs(product: Product): Record<string, string> {
   const catName = product.category?.name?.toLowerCase() ?? "";
-  const discPct = seededDiscount(product._id);
+  const discPct = (product as any).discount !== undefined && (product as any).discount !== null ? Number((product as any).discount) : seededDiscount(product._id);
 
   // Build a hash number for variety
   let h = 0;
@@ -129,6 +129,9 @@ interface Product {
   description: string;
   price: number;
   originalPrice?: number;
+  discount?: number;
+  seller?: string | null;
+  sellerEmail?: string | null;
   images: string[];
   ratings: number;
   numReviews: number;
@@ -234,6 +237,26 @@ export default function ProductDetail() {
   const mrp = getMRP(product.price, product._id);
   const discPct = seededDiscount(product._id);
   const specs = getSpecs(product);
+  // Compute display price and MRP using seller/originalPrice semantics
+  const effectiveDiscount = (product as any).discount !== undefined && (product as any).discount !== null
+    ? Number((product as any).discount)
+    : (product.originalPrice !== undefined && product.originalPrice !== null)
+      ? Math.round(((Number(product.originalPrice) - Number(product.price)) / Number(product.originalPrice)) * 100)
+      : (product.seller || (product as any).sellerEmail ? 0 : discPct);
+  let displayPrice = Number(product.price || 0);
+  let effectiveMRP = displayPrice;
+  if (product.originalPrice !== undefined && product.originalPrice !== null) {
+    effectiveMRP = Number(product.originalPrice);
+    displayPrice = effectiveDiscount > 0 ? parseFloat((effectiveMRP * (1 - effectiveDiscount / 100)).toFixed(2)) : effectiveMRP;
+  } else if (((product as any).discount !== undefined && (product as any).discount !== null) || product.seller || (product as any).sellerEmail) {
+    // Explicit discount present or seller-listed product: treat stored `price` as MRP
+    effectiveMRP = Number(product.price || 0);
+    displayPrice = effectiveDiscount > 0 ? parseFloat((effectiveMRP * (1 - effectiveDiscount / 100)).toFixed(2)) : effectiveMRP;
+  } else {
+    // Fallback: stored price is final
+    displayPrice = Number(product.price || 0);
+    effectiveMRP = effectiveDiscount > 0 && effectiveDiscount < 100 ? parseFloat((displayPrice / (1 - effectiveDiscount / 100)).toFixed(2)) : displayPrice;
+  }
   const sellerSpecs = (product as any).specifications;
 
   return (
@@ -307,9 +330,13 @@ export default function ProductDetail() {
 
           {/* Price */}
           <div className="flex items-baseline gap-3 mb-5">
-            <span className="text-3xl font-extrabold text-foreground">{formatCurrency(product.price)}</span>
-            <span className="text-lg text-muted-foreground line-through">MRP {formatCurrency(mrp)}</span>
-            <span className="px-2.5 py-0.5 bg-green-500 text-white rounded-full text-sm font-bold">{discPct}% off</span>
+            <span className="text-3xl font-extrabold text-foreground">{formatCurrency(displayPrice)}</span>
+            {effectiveMRP > displayPrice && (
+              <span className="text-lg text-muted-foreground line-through">MRP {formatCurrency(effectiveMRP)}</span>
+            )}
+            {effectiveDiscount > 0 && (
+              <span className="px-2.5 py-0.5 bg-green-500 text-white rounded-full text-sm font-bold">{effectiveDiscount}% off</span>
+            )}
           </div>
 
           <p className="text-muted-foreground mb-5 leading-relaxed">{product.description}</p>
@@ -347,7 +374,7 @@ export default function ProductDetail() {
               }`}
               disabled={product.stock === 0}
               onClick={() => {
-                addToCart({ _id: product._id, name: product.name, price: product.price, image: images[0], stock: product.stock }, quantity);
+                  addToCart({ _id: product._id, name: product.name, price: displayPrice, image: images[0], stock: product.stock, originalPrice: product.originalPrice, discount: effectiveDiscount }, quantity);
                 setCartAdded(true);
                 setTimeout(() => setCartAdded(false), 1500);
               }}
@@ -363,15 +390,17 @@ export default function ProductDetail() {
               onClick={() =>
                 navigate("/buy-now", {
                   state: {
-                    product: {
-                      _id: product._id,
-                      name: product.name,
-                      price: product.price,
-                      image: images[0],
-                      stock: product.stock,
+                      product: {
+                        _id: product._id,
+                        name: product.name,
+                        price: displayPrice,
+                        originalPrice: product.originalPrice,
+                        discount: effectiveDiscount,
+                        image: images[0],
+                        stock: product.stock,
+                      },
+                      quantity,
                     },
-                    quantity,
-                  },
                 })
               }
             >
@@ -595,6 +624,9 @@ export default function ProductDetail() {
               id={p._id}
               name={p.name}
               price={p.price}
+              discount={p.discount}
+              seller={p.seller}
+              sellerEmail={(p as any).sellerEmail}
               image={p.images[0]}
               rating={p.ratings}
               reviews={p.numReviews}

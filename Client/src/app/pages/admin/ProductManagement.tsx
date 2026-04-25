@@ -14,6 +14,7 @@ interface Product {
   name: string;
   category: Category;
   price: number;
+  discount?: number;
   stock: number;
   ratings: number;
   numReviews: number;
@@ -61,7 +62,7 @@ export default function ProductManagement() {
 
   const openAdd = () => {
     setEditingProduct(null);
-    reset({ name: "", category: "", price: undefined as any, stock: undefined as any, description: "" });
+    reset({ name: "", category: "", price: undefined as any, discount: 0, stock: undefined as any, description: "" });
     setShowModal(true);
   };
 
@@ -71,6 +72,7 @@ export default function ProductManagement() {
       name: product.name,
       category: product.category?._id || "",
       price: product.price,
+      discount: product.discount ?? 0,
       stock: product.stock,
       description: product.description,
     });
@@ -86,7 +88,7 @@ export default function ProductManagement() {
   const handleSubmit2 = async (data: ProductFormValues) => {
     setSaving(true);
     try {
-      const payload = { name: data.name, category: data.category, price: data.price, stock: data.stock, description: data.description };
+      const payload = { name: data.name, category: data.category, price: data.price, discount: data.discount ?? 0, stock: data.stock, description: data.description };
       if (editingProduct) {
         await productService.updateProduct(editingProduct._id, payload);
       } else {
@@ -146,6 +148,7 @@ export default function ProductManagement() {
               <tr>
                 <th className="px-6 py-4 text-left text-sm font-medium">Product</th>
                 <th className="px-6 py-4 text-left text-sm font-medium">Category</th>
+                <th className="px-6 py-4 text-left text-sm font-medium">Discount</th>
                 <th className="px-6 py-4 text-left text-sm font-medium">Price</th>
                 <th className="px-6 py-4 text-left text-sm font-medium">Stock</th>
                 <th className="px-6 py-4 text-left text-sm font-medium">Rating</th>
@@ -154,7 +157,7 @@ export default function ProductManagement() {
             </thead>
             <tbody className="divide-y divide-border">
               {isLoading ? (
-                <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
+                <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
               ) : products.map((product) => (
                 <tr key={product._id} className="hover:bg-muted/30 transition-colors">
                   <td className="px-6 py-4">
@@ -173,6 +176,7 @@ export default function ProductManagement() {
                     </div>
                   </td>
                   <td className="px-6 py-4">{product.category?.name}</td>
+                  <td className="px-6 py-4">{product.discount != null ? `${product.discount}%` : "—"}</td>
                   <td className="px-6 py-4 font-medium">{formatCurrency(product.price)}</td>
                   <td className="px-6 py-4">
                     <span
@@ -239,7 +243,7 @@ export default function ProductManagement() {
                 {errors.name ? <p className="text-destructive text-xs mt-1">{errors.name.message}</p> : <p className="text-muted-foreground text-xs mt-1">Min 2 characters</p>}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="block mb-2 font-medium">Category</label>
                   <select
@@ -263,6 +267,19 @@ export default function ProductManagement() {
                     className={`w-full px-4 py-2 bg-input-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring ${errors.price ? "border-destructive" : "border-input"}`}
                   />
                   {errors.price ? <p className="text-destructive text-xs mt-1">{errors.price.message}</p> : <p className="text-muted-foreground text-xs mt-1">e.g. 9.99 (greater than 0)</p>}
+                </div>
+                <div>
+                  <label className="block mb-2 font-medium">Discount %</label>
+                  <input
+                    type="number"
+                    step="1"
+                    min={0}
+                    max={100}
+                    placeholder="0"
+                    {...register("discount", { valueAsNumber: true })}
+                    className={`w-full px-4 py-2 bg-input-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring ${errors.discount ? "border-destructive" : "border-input"}`}
+                  />
+                  {errors.discount ? <p className="text-destructive text-xs mt-1">{errors.discount.message}</p> : <p className="text-muted-foreground text-xs mt-1">Percentage 0–100</p>}
                 </div>
               </div>
 

@@ -187,7 +187,19 @@ export default function Cart() {
   const shippingCost = (freeShipping && deliveryId === "standard") ? 0 : selectedDelivery.price;
 
   const couponDiscount = appliedPromo ? selectedSubtotal * (appliedPromo.pct / 100) : 0;
-  const mrpTotal = selectedItems.reduce((s, i) => s + getMRP(i.price, i._id) * i.quantity, 0);
+  const mrpTotal = selectedItems.reduce((s, i) => {
+    const itemDiscount = (i as any).discount !== undefined && (i as any).discount !== null ? Number((i as any).discount) : 0;
+    const itemPrice = Number(i.price || 0);
+    let itemMrp = itemPrice;
+    if ((i as any).originalPrice !== undefined && (i as any).originalPrice !== null) {
+      itemMrp = Number((i as any).originalPrice);
+    } else if (itemDiscount > 0) {
+      itemMrp = Number((itemPrice / (1 - itemDiscount / 100)).toFixed(2));
+    } else {
+      itemMrp = getMRP(itemPrice, i._id);
+    }
+    return s + itemMrp * i.quantity;
+  }, 0);
   const productDiscount = mrpTotal - selectedSubtotal;
   const tax = (selectedSubtotal - couponDiscount) * 0.08;
   const total = selectedSubtotal - couponDiscount + shippingCost + tax;
@@ -263,9 +275,28 @@ export default function Cart() {
 
             <AnimatePresence>
               {items.map((item) => {
-                const mrp = getMRP(item.price, item._id);
-                const discPct = getDiscountPct(item._id);
+                const itemDiscount = (item as any).discount !== undefined && (item as any).discount !== null ? Number((item as any).discount) : undefined;
+                const discPct = itemDiscount !== undefined
+                  ? itemDiscount
+                  : ((item as any).originalPrice !== undefined && (item as any).originalPrice !== null)
+                    ? Math.round(((Number((item as any).originalPrice) - Number(item.price)) / Number((item as any).originalPrice)) * 100)
+                    : getDiscountPct(item._id);
+
+                const mrp = (item as any).originalPrice !== undefined && (item as any).originalPrice !== null
+                  ? Number((item as any).originalPrice)
+                  : (discPct > 0 ? Number((Number(item.price) / (1 - discPct / 100)).toFixed(2)) : getMRP(item.price, item._id));
                 const isSelected = selectedIds.has(item._id);
+                // compute displayPrice from originalPrice/explicit discount when available
+                let displayPrice = 0;
+                if ((item as any).originalPrice !== undefined && (item as any).originalPrice !== null) {
+                  displayPrice = Number(((Number((item as any).originalPrice) * (1 - (discPct / 100))).toFixed(2)));
+                } else if (itemDiscount !== undefined) {
+                  const mrpCandidate = Number(item.price || 0);
+                  displayPrice = Number((mrpCandidate * (1 - (discPct / 100))).toFixed(2));
+                } else {
+                  displayPrice = Number(item.price || 0);
+                }
+
                 return (
                   <motion.div
                     key={item._id}
@@ -338,11 +369,13 @@ export default function Cart() {
                           {/* Price + MRP */}
                           <div className="text-right">
                             <div className="text-lg font-bold text-foreground">
-                                {formatCurrency(item.price * item.quantity)}
-                              </div>
+                              {formatCurrency(displayPrice * item.quantity)}
+                            </div>
+                            {mrp > displayPrice && (
                               <div className="text-xs text-muted-foreground line-through">
                                 MRP {formatCurrency(mrp * item.quantity)}
                               </div>
+                            )}
                               {item.quantity > 1 && (
                                 <div className="text-xs text-muted-foreground">
                                   {formatCurrency(item.price)} each

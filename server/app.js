@@ -130,7 +130,7 @@ if (process.env.NODE_ENV === "development") {
   // Dev-only: create a product quickly for local testing
   app.post("/api/debug/create-product", async (req, res) => {
     try {
-      const { name, price, category, seller, images, description, stock } = req.body || {};
+      const { name, price, category, seller, images, description, stock, discount } = req.body || {};
       // pick a category if not provided
       let catId = category;
       const Category = require("./models/Category");
@@ -140,11 +140,17 @@ if (process.env.NODE_ENV === "development") {
         catId = first._id;
       }
 
+      const inputPrice = price !== undefined ? Number(price) : 99;
+      let discountPct = Number(discount || 0);
+      if (!Number.isFinite(discountPct)) discountPct = 0;
+      discountPct = Math.max(0, Math.min(100, discountPct));
+
       const payload = {
         name: name || `Dev Product ${Date.now()}`,
         description: description || "Dev-created product",
-        price: price !== undefined ? Number(price) : 99,
-        originalPrice: price !== undefined ? Number(price) : 99,
+        originalPrice: inputPrice,
+        price: discountPct > 0 ? parseFloat((inputPrice * (1 - discountPct / 100)).toFixed(2)) : inputPrice,
+        discount: discountPct,
         category: catId,
         images: Array.isArray(images) && images.length ? images : ["/placeholder.png"],
         stock: stock !== undefined ? Number(stock) : 1,

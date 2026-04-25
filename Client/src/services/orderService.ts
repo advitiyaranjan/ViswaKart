@@ -20,7 +20,19 @@ export interface CreateOrderData {
 }
 
 export const orderService = {
-  createOrder: (data: CreateOrderData) => api.post("/orders", data),
+  createOrder: (data: CreateOrderData) =>
+    api.post("/orders", data).then((res) => {
+      try {
+        const orderId = res?.data?.order?._id || res?.data?.order?.id;
+        window.dispatchEvent(new CustomEvent("order:itemUpdated", { detail: { orderId } }));
+        // broadcast to other tabs via localStorage to trigger storage event
+        const key = "order:update";
+        const payload = JSON.stringify({ orderId, ts: Date.now() });
+        localStorage.setItem(key, payload);
+        localStorage.removeItem(key);
+      } catch (e) {}
+      return res;
+    }),
   getMyOrders: (params?: { page?: number; limit?: number }) =>
     api.get("/orders/my", { params }),
   getSellerOrders: (params?: { page?: number; limit?: number }) => api.get("/orders/seller/my", { params }),
