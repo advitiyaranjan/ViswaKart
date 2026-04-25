@@ -44,9 +44,26 @@ function LoginEmailBridge() {
   return null;
 }
 
+// Remove Clerk's "Development mode" / "Secured by Clerk" footer badge from modals
+function HideClerkBadge() {
+  useEffect(() => {
+    const remove = () => {
+      document.querySelectorAll(".cl-footer, [class*='cl-'][class*='footer']").forEach((el) => {
+        (el as HTMLElement).style.display = "none";
+      });
+    };
+    remove();
+    const observer = new MutationObserver(remove);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+  return null;
+}
+
 export default function App() {
   return (
     <>
+      <HideClerkBadge />
       <ClerkTokenBridge />
       <LoginEmailBridge />
       <RouterProvider router={router} />
