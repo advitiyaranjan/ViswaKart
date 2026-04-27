@@ -257,14 +257,15 @@ exports.updateOrderStatus = async (req, res) => {
   if (status === "Delivered") {
     order.isDelivered = true;
     order.deliveredAt = Date.now();
-    // Mark ordered products as sold and remove from listings
+    // Decrease stock for ordered products instead of removing listings
     for (const item of order.items) {
       try {
         const p = await Product.findById(item.product);
         if (p) {
-          p.sold = true;
-          p.isActive = false;
-          p.stock = 0;
+          const currentStock = Number(p.stock) || 0;
+          const qty = Number(item.quantity) || 0;
+          p.stock = Math.max(0, currentStock - qty);
+          if (p.stock <= 0) p.isActive = false;
           await p.save();
         }
       } catch (err) {
@@ -329,9 +330,10 @@ exports.updateOrderItemStatus = async (req, res) => {
     try {
       const p = await Product.findById(item.product);
       if (p) {
-        p.sold = true;
-        p.isActive = false;
-        p.stock = 0;
+        const currentStock = Number(p.stock) || 0;
+        const qty = Number(item.quantity) || 0;
+        p.stock = Math.max(0, currentStock - qty);
+        if (p.stock <= 0) p.isActive = false;
         await p.save();
       }
     } catch (e) {
