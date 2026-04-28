@@ -1,117 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router";
-import { loadStripe } from "@stripe/stripe-js";
-import {
-  Elements,
-  PaymentElement,
-  useStripe,
-  useElements,
-} from "@stripe/react-stripe-js";
 import { ShoppingBag, MapPin, Truck, Lock, ChevronLeft, CheckCircle2 } from "lucide-react";
 import { useCart } from "../../context/CartContext";
 import { useAuth } from "../../context/AuthContext";
-import api from "../../services/api";
 import { orderService } from "../../services/orderService";
 import { Button } from "../components/Button";
 import { formatCurrency } from "../../lib/currency";
-
-const stripePromise = loadStripe((import.meta as any).env.VITE_STRIPE_PUBLISHABLE_KEY);
-
-// ─── Inner form (has access to stripe/elements hooks) ────────────────────────
-
-interface PayFormProps {
-  clientSecret: string;
-  paymentIntentId: string;
-  shippingAddress: object;
-  breakdown: object;
-  cartItems: { product: string; quantity: number }[];
-  onSuccess: (orderId: string) => void;
-}
-
-function PaymentForm({
-  clientSecret,
-  paymentIntentId,
-  shippingAddress,
-  breakdown,
-  cartItems,
-  onSuccess,
-}: PayFormProps) {
-  const stripe = useStripe();
-  const elements = useElements();
-  const [paying, setPaying] = useState(false);
-  const [error, setError] = useState("");
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!stripe || !elements) return;
-    setPaying(true);
-    setError("");
-
-    // Confirm payment with Stripe
-    const { error: stripeError } = await stripe.confirmPayment({
-      elements,
-      redirect: "if_required",
-    });
-
-    if (stripeError) {
-      setError(stripeError.message ?? "Payment failed. Please try again.");
-      setPaying(false);
-      return;
-    }
-
-    // Payment succeeded — create the order in our DB
-    try {
-      const res = await api.post("/payments/confirm-order", {
-        paymentIntentId,
-        items: cartItems,
-        shippingAddress,
-        breakdown,
-      });
-      onSuccess(res.data.order._id);
-    } catch {
-      setError("Payment succeeded but order creation failed. Contact support.");
-      setPaying(false);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <PaymentElement
-        options={{
-          layout: "tabs",
-        }}
-      />
-      {error && (
-        <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-          <span>⚠</span> {error}
-        </div>
-      )}
-      <Button
-        type="submit"
-        variant="primary"
-        className="w-full"
-        size="lg"
-        disabled={!stripe || paying}
-      >
-        {paying ? (
-          <span className="flex items-center gap-2">
-            <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="30 70" />
-            </svg>
-            Processing payment…
-          </span>
-        ) : (
-          <span className="flex items-center gap-2">
-            <Lock className="w-4 h-4" /> Pay & Place Order
-          </span>
-        )}
-      </Button>
-      <p className="text-xs text-center text-muted-foreground flex items-center justify-center gap-1">
-        <Lock className="w-3 h-3" /> 256-bit SSL encrypted · Powered by Stripe
-      </p>
-    </form>
-  );
-}
 
 // ─── Main Checkout page ───────────────────────────────────────────────────────
 
@@ -130,11 +24,6 @@ export default function Checkout() {
     breakdown: any;
   } | null;
 
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
-  const [breakdown, setBreakdown] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [initError, setInitError] = useState("");
   const [success, setSuccess] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [placingCod, setPlacingCod] = useState(false);
@@ -149,27 +38,7 @@ export default function Checkout() {
     if (!user) { navigate("/login"); return; }
     if (!items || items.length === 0) { navigate("/cart"); return; }
     if (!checkoutState?.selectedAddr) { navigate("/cart"); return; }
-
-    api.post("/payments/create-intent", {
-      items: checkoutItems.map((i: any) => ({ product: i._id, quantity: i.quantity })),
-      shippingPrice: checkoutState.shippingCost,
-      couponDiscount: checkoutState.couponDiscount,
-    })
-      .then((res) => {
-        setClientSecret(res.data.clientSecret);
-        setPaymentIntentId(res.data.paymentIntentId);
-        setBreakdown(res.data.breakdown);
-      })
-      .catch(() => setInitError("Failed to initialise payment. Please go back and try again."))
-      .finally(() => setLoading(false));
-  }, []);
-
-  const handleSuccess = (id: string) => {
-    // Only remove the items that were checked out
-    removeItems?.(checkoutItems.map((i: any) => i._id));
-    setOrderId(id);
-    setSuccess(true);
-  };
+  }, [checkoutState?.selectedAddr, items, navigate, user]);
 
   const handlePlaceCod = async () => {
     if (!checkoutItems || checkoutItems.length === 0) return;
@@ -179,6 +48,7 @@ export default function Checkout() {
         items: checkoutItems.map((i: any) => ({ product: i._id, quantity: i.quantity })),
         shippingAddress: checkoutState.selectedAddr,
         paymentMethod: "cod",
+        shippingPrice: checkoutState.shippingCost,
       });
       // remove items and mark success
       removeItems?.(checkoutItems.map((i: any) => i._id));
@@ -242,46 +112,20 @@ export default function Checkout() {
         <div className="lg:col-span-3 space-y-4">
           <div className="bg-white rounded-2xl border border-border p-5 shadow-sm">
             <h2 className="font-bold text-sm mb-4 flex items-center gap-2">
-              <Lock className="w-4 h-4 text-primary" /> Secure Payment
+              <Lock className="w-4 h-4 text-primary" /> Cash On Delivery
             </h2>
-
-            {loading ? (
-              <div className="space-y-3">
-                <div className="h-12 rounded-lg bg-slate-100 animate-pulse" />
-                <div className="h-40 rounded-lg bg-slate-100 animate-pulse" />
+            <div className="space-y-4">
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm">
+                Cash on Delivery is currently the only available payment option.
               </div>
-            ) : initError ? (
-              <div className="text-sm text-destructive">{initError}</div>
-            ) : (
-              <>
-                {clientSecret ? (
-                  <Elements
-                    stripe={stripePromise}
-                    options={{ clientSecret, appearance: { theme: "stripe" } }}
-                  >
-                    <PaymentForm
-                      clientSecret={clientSecret}
-                      paymentIntentId={paymentIntentId!}
-                      shippingAddress={addr}
-                      breakdown={breakdown}
-                      cartItems={checkoutItems.map((i: any) => ({ product: i._id, quantity: i.quantity }))}
-                      onSuccess={handleSuccess}
-                    />
-                  </Elements>
-                ) : null}
-
-                {/* Cash on Delivery option */}
-                <div className="mt-4">
-                  <Button
-                    className="w-full"
-                    onClick={handlePlaceCod}
-                    disabled={placingCod}
-                  >
-                    {placingCod ? "Placing order…" : "Pay with Cash on Delivery (COD)"}
-                  </Button>
-                </div>
-              </>
-            )}
+              <Button
+                className="w-full"
+                onClick={handlePlaceCod}
+                disabled={placingCod}
+              >
+                {placingCod ? "Placing order…" : "Place COD Order"}
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -323,28 +167,25 @@ export default function Checkout() {
             </div>
 
             {/* Price breakdown */}
-            {breakdown && (
+            {checkoutState?.breakdown && (
               <div className="border-t border-border mt-3 pt-3 space-y-1.5 text-xs">
                 <div className="flex justify-between text-muted-foreground">
-                  <span>Subtotal</span><span>{formatCurrency(breakdown.itemsPrice)}</span>
+                  <span>Subtotal</span><span>{formatCurrency(checkoutState.breakdown.itemsPrice)}</span>
                 </div>
-                {breakdown.couponDiscount > 0 && (
+                {checkoutState.breakdown.couponDiscount > 0 && (
                   <div className="flex justify-between text-green-600">
-                      <span>Discount</span><span>−{formatCurrency(breakdown.couponDiscount)}</span>
+                      <span>Discount</span><span>−{formatCurrency(checkoutState.breakdown.couponDiscount)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-muted-foreground">
                   <span>Shipping</span>
-                    <span className={breakdown.shippingPrice === 0 ? "text-green-600" : ""}>
-                      {breakdown.shippingPrice === 0 ? "Free" : formatCurrency(breakdown.shippingPrice)}
+                    <span className={checkoutState.breakdown.shippingPrice === 0 ? "text-green-600" : ""}>
+                      {checkoutState.breakdown.shippingPrice === 0 ? "Free" : formatCurrency(checkoutState.breakdown.shippingPrice)}
                     </span>
-                </div>
-                <div className="flex justify-between text-muted-foreground">
-                    <span>Tax (8%)</span><span>{formatCurrency(breakdown.taxPrice)}</span>
                 </div>
                 <div className="flex justify-between font-bold border-t border-border pt-1.5 text-sm">
                   <span>Total</span>
-                    <span className="text-primary">{formatCurrency(breakdown.totalPrice)}</span>
+                    <span className="text-primary">{formatCurrency(checkoutState.breakdown.totalPrice)}</span>
                 </div>
               </div>
             )}

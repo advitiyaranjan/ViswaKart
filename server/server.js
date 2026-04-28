@@ -37,7 +37,12 @@ const startServer = async () => {
 
   // Handle unhandled promise rejections
   process.on("unhandledRejection", (err) => {
-    console.error("Unhandled Rejection:", err.message);
+    // Log full error for debugging (include stack when available)
+    try {
+      console.error("Unhandled Rejection:", err && err.stack ? err.stack : err);
+    } catch (logErr) {
+      console.error("Unhandled Rejection (failed to stringify):", logErr);
+    }
     server.close(() => process.exit(1));
   });
 };

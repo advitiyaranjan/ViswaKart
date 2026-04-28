@@ -17,6 +17,7 @@ export interface CreateOrderData {
   items: OrderItem[];
   shippingAddress: ShippingAddress;
   paymentMethod: "card" | "paypal" | "cod";
+  shippingPrice?: number;
 }
 
 export const orderService = {

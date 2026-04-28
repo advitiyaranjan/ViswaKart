@@ -26,14 +26,17 @@ exports.updateProfile = async (req, res) => {
 // @access  Private
 exports.addAddress = async (req, res) => {
   const user = await User.findById(req.user.id);
-  const { label, phone, street, city, state, zipCode, country, isDefault } = req.body;
+  const { name, label, phone, street, city, state, zipCode, country, isDefault } = req.body;
+  if (!name || String(name).trim().length < 2) {
+    return res.status(400).json({ success: false, message: "Name is required" });
+  }
   if (!phone || !/^[0-9]{7,15}$/.test(String(phone))) {
     return res.status(400).json({ success: false, message: "Phone number is required and must contain only digits (7-15 characters)" });
   }
   if (isDefault) {
     user.addresses.forEach((a) => { a.isDefault = false; });
   }
-  user.addresses.push({ label, phone, street, city, state, zipCode, country, isDefault: !!isDefault });
+  user.addresses.push({ name: String(name).trim(), label, phone, street, city, state, zipCode, country, isDefault: !!isDefault });
   await user.save();
   res.status(201).json({ success: true, addresses: user.addresses });
 };
@@ -45,14 +48,17 @@ exports.updateAddress = async (req, res) => {
   const user = await User.findById(req.user.id);
   const addr = user.addresses.id(req.params.addrId);
   if (!addr) return res.status(404).json({ success: false, message: "Address not found" });
-  const { label, phone, street, city, state, zipCode, country, isDefault } = req.body;
+  const { name, label, phone, street, city, state, zipCode, country, isDefault } = req.body;
+  if (!name || String(name).trim().length < 2) {
+    return res.status(400).json({ success: false, message: "Name is required" });
+  }
   if (!phone || !/^[0-9]{7,15}$/.test(String(phone))) {
     return res.status(400).json({ success: false, message: "Phone number is required and must contain only digits (7-15 characters)" });
   }
   if (isDefault) {
     user.addresses.forEach((a) => { a.isDefault = false; });
   }
-  Object.assign(addr, { label, phone, street, city, state, zipCode, country, isDefault: !!isDefault });
+  Object.assign(addr, { name: String(name).trim(), label, phone, street, city, state, zipCode, country, isDefault: !!isDefault });
   await user.save();
   res.status(200).json({ success: true, addresses: user.addresses });
 };
@@ -244,14 +250,17 @@ exports.googleCallback = async (accessToken, refreshToken, profile, done) => {
 // @access  Private
 exports.addAddress = async (req, res) => {
   const user = await User.findById(req.user.id);
-  const { label, phone, street, city, state, zipCode, country, isDefault } = req.body;
+  const { name, label, phone, street, city, state, zipCode, country, isDefault } = req.body;
+  if (!name || String(name).trim().length < 2) {
+    return res.status(400).json({ success: false, message: "Name is required" });
+  }
   if (!phone || !/^[0-9]{7,15}$/.test(String(phone))) {
     return res.status(400).json({ success: false, message: "Phone number is required and must contain only digits (7-15 characters)" });
   }
   if (isDefault) {
     user.addresses.forEach((a) => { a.isDefault = false; });
   }
-  user.addresses.push({ label, phone, street, city, state, zipCode, country, isDefault: !!isDefault });
+  user.addresses.push({ name: String(name).trim(), label, phone, street, city, state, zipCode, country, isDefault: !!isDefault });
   await user.save();
   res.status(201).json({ success: true, addresses: user.addresses });
 };
@@ -263,14 +272,17 @@ exports.updateAddress = async (req, res) => {
   const user = await User.findById(req.user.id);
   const addr = user.addresses.id(req.params.addrId);
   if (!addr) return res.status(404).json({ success: false, message: "Address not found" });
-  const { label, phone, street, city, state, zipCode, country, isDefault } = req.body;
+  const { name, label, phone, street, city, state, zipCode, country, isDefault } = req.body;
+  if (!name || String(name).trim().length < 2) {
+    return res.status(400).json({ success: false, message: "Name is required" });
+  }
   if (!phone || !/^[0-9]{7,15}$/.test(String(phone))) {
     return res.status(400).json({ success: false, message: "Phone number is required and must contain only digits (7-15 characters)" });
   }
   if (isDefault) {
     user.addresses.forEach((a) => { a.isDefault = false; });
   }
-  Object.assign(addr, { label, phone, street, city, state, zipCode, country, isDefault: !!isDefault });
+  Object.assign(addr, { name: String(name).trim(), label, phone, street, city, state, zipCode, country, isDefault: !!isDefault });
   await user.save();
   res.status(200).json({ success: true, addresses: user.addresses });
 };

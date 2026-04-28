@@ -111,9 +111,11 @@ export default function Cart() {
   const [addrForm, setAddrForm] = useState<AddressData>({ ...EMPTY_FORM });
   const [addrSaving, setAddrSaving] = useState(false);
   const [addrErrors, setAddrErrors] = useState<Record<string, string>>({});
+  const [addrSubmitError, setAddrSubmitError] = useState("");
   // Guest address form
   const [guestAddr, setGuestAddr] = useState({ name: "", phone: "", street: "", city: "", state: "", zipCode: "", country: "" });
   const [guestAddrErrors, setGuestAddrErrors] = useState<Record<string, string>>({});
+  const [guestAddrSubmitError, setGuestAddrSubmitError] = useState("");
   const [guestAddrValid, setGuestAddrValid] = useState(false);
   const [guestAddrOpen, setGuestAddrOpen] = useState(false);
   const [guestAddrSaved, setGuestAddrSaved] = useState(false);
@@ -146,7 +148,7 @@ export default function Cart() {
     const shape = addressSchema.shape as Record<string, import("zod").ZodTypeAny>;
     if (!shape[key]) return;
     const r = shape[key].safeParse(value);
-    const msg = (!r.success && r.error?.errors && r.error.errors.length > 0) ? r.error.errors[0]?.message ?? "" : "";
+    const msg = !r.success ? r.error.issues[0]?.message ?? "" : "";
     setAddrErrors((p) => ({ ...p, [key]: msg }));
   }
 
@@ -154,15 +156,18 @@ export default function Cart() {
     const shape = guestAddressSchema.shape as Record<string, import("zod").ZodTypeAny>;
     if (!shape[key]) return;
     const r = shape[key].safeParse(value);
-    const msg = (!r.success && r.error?.errors && r.error.errors.length > 0) ? r.error.errors[0]?.message ?? "" : "";
+    const msg = !r.success ? r.error.issues[0]?.message ?? "" : "";
     setGuestAddrErrors((p) => ({ ...p, [key]: msg }));
   }
 
   async function saveNewAddress() {
+    setAddrSubmitError("");
     const result = addressSchema.safeParse(addrForm);
     if (!result.success) {
       const errs: Record<string, string> = {};
-      (result.error?.errors ?? []).forEach((e) => { if (e.path && e.path.length > 0) errs[String(e.path[0])] = e.message; });
+      result.error.issues.forEach((issue) => {
+        if (issue.path.length > 0) errs[String(issue.path[0])] = issue.message;
+      });
       setAddrErrors(errs);
       return;
     }
@@ -176,9 +181,10 @@ export default function Cart() {
       const newAddr = addrs[addrs.length - 1];
       if (newAddr) setSelectedAddrId(newAddr._id);
       setShowAddForm(false);
+      setAddrSubmitError("");
       setAddrForm({ ...EMPTY_FORM });
-    } catch {
-      // silently ignore
+    } catch (error: any) {
+      setAddrSubmitError(error?.response?.data?.message ?? "Failed to save address. Please fix the highlighted fields and try again.");
     } finally {
       setAddrSaving(false);
     }
@@ -204,8 +210,8 @@ export default function Cart() {
     return s + itemMrp * i.quantity;
   }, 0);
   const productDiscount = mrpTotal - selectedSubtotal;
-  const tax = (selectedSubtotal - couponDiscount) * 0.08;
-  const total = selectedSubtotal - couponDiscount + shippingCost + tax;
+  const tax = 0;
+  const total = selectedSubtotal - couponDiscount + shippingCost;
 
   function applyPromo() {
     const code = promoInput.trim().toUpperCase();
@@ -507,6 +513,12 @@ export default function Cart() {
                           <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
                             className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-2">
                             <p className="text-xs font-bold text-primary mb-1">Add New Address</p>
+                            {addrSubmitError && (
+                              <div className="flex items-start gap-2 p-2 rounded-lg border border-destructive/20 bg-destructive/5 text-xs text-destructive">
+                                <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                                <span>{addrSubmitError}</span>
+                              </div>
+                            )}
 
                             {/* Label pills */}
                             <div className="flex gap-1.5">
@@ -649,6 +661,12 @@ export default function Cart() {
                                   <X className="w-3.5 h-3.5" />
                                 </button>
                               </div>
+                              {guestAddrSubmitError && (
+                                <div className="flex items-start gap-2 p-2 rounded-lg border border-destructive/20 bg-destructive/5 text-xs text-destructive">
+                                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                                  <span>{guestAddrSubmitError}</span>
+                                </div>
+                              )}
                               {([
                                 { key: "name", placeholder: "Full name *", type: "text", hint: "" },
                                 { key: "phone", placeholder: "Phone number *", type: "tel", hint: "e.g. 9876543210" },
@@ -677,14 +695,19 @@ export default function Cart() {
                               )}
                               <button
                                 onClick={() => {
+                                  setGuestAddrSubmitError("");
                                   const result = guestAddressSchema.safeParse(guestAddr);
                                   if (!result.success) {
                                     const errs: Record<string, string> = {};
-                                    (result.error?.errors ?? []).forEach((e) => { if (e.path && e.path.length > 0) errs[String(e.path[0])] = e.message; });
+                                    result.error.issues.forEach((issue) => {
+                                      if (issue.path.length > 0) errs[String(issue.path[0])] = issue.message;
+                                    });
                                     setGuestAddrErrors(errs);
+                                    setGuestAddrSubmitError("Please fill in the required address fields correctly.");
                                     return;
                                   }
                                   setGuestAddrErrors({});
+                                  setGuestAddrSubmitError("");
                                   setGuestAddrSaved(true);
                                   setGuestAddrOpen(false);
                                 }}
@@ -769,10 +792,6 @@ export default function Cart() {
                   <span className={`font-medium ${shippingCost === 0 ? "text-green-600" : ""}`}>
                     {shippingCost === 0 ? "Free" : formatCurrency(shippingCost)}
                   </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Tax (8%)</span>
-                  <span className="font-medium">{formatCurrency(tax)}</span>
                 </div>
                 <div className="border-t border-border pt-2 flex justify-between items-center">
                   <span className="font-bold text-sm">Total</span>

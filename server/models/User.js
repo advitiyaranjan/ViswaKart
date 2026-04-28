@@ -51,6 +51,7 @@ const userSchema = new mongoose.Schema(
     },
     addresses: [
       {
+        name: { type: String, default: "" },
         label: { type: String, default: "Home" },
         phone: { type: String, default: "" },
         street: { type: String, required: true },

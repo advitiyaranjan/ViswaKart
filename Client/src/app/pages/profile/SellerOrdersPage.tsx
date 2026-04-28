@@ -60,11 +60,11 @@ export default function SellerOrdersPage() {
   }, [isSignedIn]);
 
   const canEditItem = (item: any) => {
-    // Server returned only orders that contain at least one of this seller's products.
-    // Identify which items belong to the current seller by matching seller email or sellerName.
+    // Match only this seller's own items so pricing stays consistent with the order-item snapshots.
     if (!user) return false;
     const myEmail = (user.email || "").toLowerCase();
-    return (item.sellerEmail && String(item.sellerEmail).toLowerCase() === myEmail) || (item.sellerName && item.sellerName === user.name);
+    const myName = String(user.name || "").trim();
+    return (item.sellerEmail && String(item.sellerEmail).toLowerCase() === myEmail) || (item.sellerName && String(item.sellerName).trim() === myName);
   };
 
   const handleChangeStatus = async (orderId: string, itemId: string, status: string) => {
@@ -102,58 +102,64 @@ export default function SellerOrdersPage() {
       </h2>
 
       <div className="space-y-3">
-        {orders.map((order) => (
-          <div key={order._id} className="rounded-xl border border-border overflow-hidden">
-            <div className="p-4 bg-white flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground">Order ID</p>
-                <p className="font-mono text-sm font-medium">#{String(order._id).slice(-8).toUpperCase()}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Buyer</p>
-                <p className="text-sm font-medium">{order.user?.name || order.user?.email || 'Customer'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Total</p>
-                <p className="text-sm font-bold text-primary">{formatCurrency(order.totalPrice)}</p>
-              </div>
-            </div>
+        {orders.map((order) => {
+          const sellerItems = (order.items || []).filter((item: any) => canEditItem(item));
+          if (sellerItems.length === 0) return null;
+          const sellerTotal = sellerItems.reduce((sum: number, item: any) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
 
-            <div className="border-t border-border p-4 bg-slate-50 space-y-3">
-              {order.items.map((item: any) => (
-                <div key={item._id} className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-lg overflow-hidden bg-white border border-border flex-shrink-0">
-                    <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{item.name}</p>
-                    <p className="text-xs text-muted-foreground">Qty: {item.quantity}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Seller: {item.sellerName || item.sellerEmail}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-semibold">{formatCurrency(item.price * item.quantity)}</p>
-                    {canEditItem(item) ? (
-                      !isSignedIn ? (
-                        <button onClick={() => openSignIn()} className="mt-2 px-2 py-1 text-sm border rounded-lg bg-yellow-50">Sign in to update</button>
-                      ) : (
-                        <select
-                          value={item.itemStatus || 'Pending'}
-                          onChange={(e) => handleChangeStatus(order._id, item._id, e.target.value)}
-                          disabled={!!updating[item._id]}
-                          className="mt-2 px-2 py-1 text-sm border rounded-lg"
-                        >
-                          {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      )
-                    ) : (
-                      <div className="mt-2 text-xs text-muted-foreground">Status: <span className="font-medium">{item.itemStatus || 'Pending'}</span></div>
-                    )}
-                  </div>
+          return (
+            <div key={order._id} className="rounded-xl border border-border overflow-hidden">
+              <div className="p-4 bg-white flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground">Order ID</p>
+                  <p className="font-mono text-sm font-medium">#{String(order._id).slice(-8).toUpperCase()}</p>
                 </div>
-              ))}
+                <div>
+                  <p className="text-xs text-muted-foreground">Buyer</p>
+                  <p className="text-sm font-medium">{order.user?.name || order.user?.email || 'Customer'}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Your Items Total</p>
+                  <p className="text-sm font-bold text-primary">{formatCurrency(sellerTotal)}</p>
+                </div>
+              </div>
+
+              <div className="border-t border-border p-4 bg-slate-50 space-y-3">
+                {sellerItems.map((item: any) => (
+                  <div key={item._id} className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-lg overflow-hidden bg-white border border-border flex-shrink-0">
+                      <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{item.name}</p>
+                      <p className="text-xs text-muted-foreground">Qty: {item.quantity}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Seller: {item.sellerName || item.sellerEmail}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold">{formatCurrency((Number(item.price) || 0) * (Number(item.quantity) || 0))}</p>
+                      {canEditItem(item) ? (
+                        !isSignedIn ? (
+                          <button onClick={() => openSignIn()} className="mt-2 px-2 py-1 text-sm border rounded-lg bg-yellow-50">Sign in to update</button>
+                        ) : (
+                          <select
+                            value={item.itemStatus || 'Pending'}
+                            onChange={(e) => handleChangeStatus(order._id, item._id, e.target.value)}
+                            disabled={!!updating[item._id]}
+                            className="mt-2 px-2 py-1 text-sm border rounded-lg"
+                          >
+                            {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        )
+                      ) : (
+                        <div className="mt-2 text-xs text-muted-foreground">Status: <span className="font-medium">{item.itemStatus || 'Pending'}</span></div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

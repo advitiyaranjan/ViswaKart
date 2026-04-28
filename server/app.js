@@ -169,6 +169,38 @@ if (process.env.NODE_ENV === "development") {
     }
   });
 
+  // Dev-only: impersonate a user and create an order by calling the createOrder controller directly
+  // Use only for local testing. Request body: { email?, name?, items, shippingAddress, paymentMethod }
+  app.post("/api/debug/create-order", async (req, res) => {
+    try {
+      const { email, name, items, shippingAddress, paymentMethod } = req.body || {};
+      const User = require("./models/User");
+      // find or create a lightweight user for testing
+      let user = null;
+      if (email) user = await User.findOne({ email: String(email).toLowerCase() });
+      if (!user) {
+        user = await User.create({
+          name: name || (email ? email.split("@")[0] : "Dev User"),
+          email: email ? String(email).toLowerCase() : `dev+${Date.now()}@example.com`,
+          password: require("crypto").randomBytes(32).toString("hex"),
+        });
+      }
+
+      // Build a fake request object compatible with createOrder
+      const fakeReq = {
+        user: { id: String(user._id) },
+        body: { items: items || [], shippingAddress: shippingAddress || {}, paymentMethod: paymentMethod || "cod" },
+      };
+
+      const { createOrder } = require("./controllers/orderController");
+      // Call controller directly — it will send response through res
+      return await createOrder(fakeReq, res);
+    } catch (err) {
+      console.error("/api/debug/create-order error:", err && err.stack ? err.stack : err);
+      return res.status(500).json({ success: false, message: err.message || String(err) });
+    }
+  });
+
   // Dev-only: toggle product active state
   app.post("/api/debug/product/:id/active", async (req, res) => {
     try {

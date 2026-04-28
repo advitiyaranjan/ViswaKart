@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useUser, useClerk } from "@clerk/react";
 import { authService } from "../../../services/authService";
 import { userService } from "../../../services/userService";
@@ -12,6 +12,7 @@ import { formatCurrency } from "../../../lib/currency";
 export default function SellProductPage() {
   const [serverUser, setServerUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [pageReady, setPageReady] = useState(false);
   const [showRequestForm, setShowRequestForm] = useState(false);
 
   // Product form
@@ -31,6 +32,8 @@ export default function SellProductPage() {
   const [updatingItem, setUpdatingItem] = useState<Record<string, boolean>>({});
   const [debugProducts, setDebugProducts] = useState<any[] | null>(null);
   const [debugLoading, setDebugLoading] = useState(false);
+  const lastLoadedUserIdRef = useRef<string>("");
+  const draftRestoredForRef = useRef<string>("");
 
   // Request form
   const [hostelNumber, setHostelNumber] = useState("");
@@ -44,9 +47,11 @@ export default function SellProductPage() {
   const DRAFT_PREFIX = "sell:draft:";
   const getDraftKey = () => `${DRAFT_PREFIX}${serverUser?._id || "anon"}`;
 
-  // Restore draft (if present) when serverUser becomes available (or on mount)
+  // Restore draft once per user key to avoid re-applying draft state after unrelated list refreshes.
   useEffect(() => {
     const key = getDraftKey();
+    if (draftRestoredForRef.current === key) return;
+    draftRestoredForRef.current = key;
     try {
       const raw = localStorage.getItem(key);
       if (!raw) return;
@@ -68,7 +73,7 @@ export default function SellProductPage() {
       // ignore parse errors
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverUser, myProducts]);
+  }, [serverUser]);
 
   // Autosave draft when form fields change (debounced)
   useEffect(() => {
@@ -101,70 +106,85 @@ export default function SellProductPage() {
   const [imagesUploading, setImagesUploading] = useState(false);
 
   useEffect(() => {
-    setLoading(true);
-    Promise.all([authService.getMe(), categoryService.getCategories()])
-      .then(([meRes, catRes]) => {
+    let cancelled = false;
+
+    (async () => {
+      setLoading(true);
+      try {
+        const [meRes, catRes] = await Promise.all([
+          authService.getMe(),
+          categoryService.getCategories(),
+        ]);
+        if (cancelled) return;
         setServerUser(meRes.data.user);
         setCategories(catRes.data?.categories || []);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      } catch (e) {
+        if (!cancelled) {
+          setCategories([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          setPageReady(true);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Re-fetch server-side user when Clerk sign-in state changes so serverUser is available
   const { isSignedIn } = useUser();
   const { openSignIn } = useClerk();
   useEffect(() => {
-    if (!isSignedIn) return;
-    // If Clerk just signed in, ensure server-side user exists and refresh seller data
+    if (!pageReady || !isSignedIn) return;
+    let cancelled = false;
+
     (async () => {
       try {
-        setLoading(true);
         const meRes = await authService.getMe();
-        setServerUser(meRes.data.user);
-        // refresh seller products/orders when serverUser becomes available
-        if (meRes?.data?.user?.isSeller || meRes?.data?.user?.sellerApproved) {
-          try {
-            const r = await productService.getProducts({ seller: meRes.data.user._id, limit: 50 });
-            setMyProducts(r.data?.products || []);
-          } catch (e) {}
-          try {
-            const or = await orderService.getSellerOrders({ limit: 50 });
-            setMyOrders(or.data.orders || []);
-          } catch (e) {}
-        }
+        if (cancelled) return;
+        const nextUser = meRes.data.user;
+        setServerUser((prev: any) => {
+          if (prev?._id === nextUser?._id && prev?.sellerApproved === nextUser?.sellerApproved && prev?.isSeller === nextUser?.isSeller) {
+            return prev;
+          }
+          return nextUser;
+        });
       } catch (e) {
         // ignore
-      } finally {
-        setLoading(false);
       }
     })();
-  }, [isSignedIn]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isSignedIn, pageReady]);
 
   useEffect(() => {
     if (!serverUser) return;
     setRequestSent(Boolean(serverUser.sellerRequested));
-    // Only pre-fill seller contact fields when the user already has
-    // existing product listings. Do not auto-fill for users who haven't
-    // listed products before — this avoids showing stale/default values.
-    if (Array.isArray(myProducts) && myProducts.length > 0) {
-      setSellerMobile(serverUser?.sellerProfile?.mobileNumber || "");
-      setSellerHostel(serverUser?.sellerProfile?.hostelNumber || "");
-      setSellerRoom(serverUser?.sellerProfile?.roomNumber || "");
-    }
+    // Pre-fill contact fields once from profile data, while still respecting any draft/user input.
+    setSellerMobile((v) => v || serverUser?.sellerProfile?.mobileNumber || "");
+    setSellerHostel((v) => v || serverUser?.sellerProfile?.hostelNumber || "");
+    setSellerRoom((v) => v || serverUser?.sellerProfile?.roomNumber || "");
   }, [serverUser]);
 
   useEffect(() => {
     if (!serverUser) return;
+    if (lastLoadedUserIdRef.current === serverUser._id) return;
+    lastLoadedUserIdRef.current = serverUser._id;
     const isEligibleDomain = (serverUser?.email || "").endsWith("@iiitm.ac.in");
-    // load seller products & orders if seller or eligible IIITM domain
-    if (serverUser.isSeller || serverUser.sellerApproved || isEligibleDomain) {
-      (async () => {
+    let cancelled = false;
+
+    (async () => {
+      if (serverUser.isSeller || serverUser.sellerApproved || isEligibleDomain) {
         try {
           const res = await productService.getProducts({ seller: serverUser._id, limit: 50 });
           let serverProducts = res?.data?.products || [];
 
-          // If nothing returned by seller id, try fallback queries by email then mobile
           if ((!serverProducts || serverProducts.length === 0) && serverUser?.email) {
             try {
               const r2 = await productService.getProducts({ sellerEmail: serverUser.email, limit: 50 });
@@ -182,18 +202,31 @@ export default function SellProductPage() {
             }
           }
 
-          setMyProducts(serverProducts);
+          if (!cancelled) setMyProducts(serverProducts);
         } catch (e) {
-          // ignore — leave empty list
+          if (!cancelled) setMyProducts([]);
         }
-      })();
-      // only fetch seller orders when the user is an actual seller (approved)
-      if (serverUser.isSeller || serverUser.sellerApproved) {
-        orderService.getSellerOrders({ limit: 50 }).then((r) => setMyOrders(r.data.orders)).catch(() => {});
+
+        if (serverUser.isSeller || serverUser.sellerApproved) {
+          try {
+            const r = await orderService.getSellerOrders({ limit: 50 });
+            if (!cancelled) setMyOrders(r.data.orders || []);
+          } catch (e) {
+            if (!cancelled) setMyOrders([]);
+          }
+        } else if (!cancelled) {
+          setMyOrders([]);
+        }
       }
-    }
-    // fetch debug products for troubleshooting (dev-only endpoint)
-    fetchDebugProducts(serverUser._id).catch(() => {});
+
+      if (import.meta.env.DEV) {
+        await fetchDebugProducts(serverUser._id).catch(() => {});
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [serverUser]);
 
   // Listen for order item updates (from other tabs or actions) and refresh seller orders
@@ -253,7 +286,6 @@ export default function SellProductPage() {
       setSaving(true);
       setStatusMessage("");
       const res = await productService.createProduct(payload);
-      console.log('[SELL_PAGE] createProduct response', res?.data);
       const created = res?.data?.product;
       // Immediately show the created product in the seller's listings
       if (created) {
@@ -277,7 +309,9 @@ export default function SellProductPage() {
         // ignore — keep optimistic product already inserted
       }
       // Update debug list
-      await fetchDebugProducts(serverUser._id).catch(() => {});
+      if (import.meta.env.DEV) {
+        await fetchDebugProducts(serverUser._id).catch(() => {});
+      }
       // clear form
       setName("");
       setPrice("");
@@ -550,86 +584,87 @@ export default function SellProductPage() {
                 ) : (
                   <div className="space-y-3">
                     {myOrders.map((o) => (
-                      <div key={o._id} className="p-3 border rounded-lg">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="font-medium">Order #{o._id.slice(-8).toUpperCase()}</div>
-                            <div className="text-sm text-muted-foreground">{new Date(o.createdAt).toLocaleString()}</div>
-                          </div>
-                          <div className="text-sm">{o.status}</div>
-                        </div>
-                        <div className="mt-2 text-sm">
-                          {o.items.map((it: any) => {
-                            // Determine if this item belongs to the current seller
-                            const belongsToMe = (() => {
-                              try {
-                                if (!serverUser) return false;
-                                const myId = String(serverUser._id);
-                                if (it.seller && String(it.seller) === myId) return true;
-                                if (it.sellerEmail && serverUser.email && String(it.sellerEmail).toLowerCase() === String(serverUser.email).toLowerCase()) return true;
-                                if (it.sellerMobile && serverUser.sellerProfile?.mobileNumber && String(it.sellerMobile) === String(serverUser.sellerProfile.mobileNumber)) return true;
-                                return false;
-                              } catch (e) { return false; }
-                            })();
+                      (() => {
+                        const sellerItems = (o.items || []).filter((it: any) => {
+                          try {
+                            if (!serverUser) return false;
+                            const myId = String(serverUser._id);
+                            if (it.seller && String(it.seller) === myId) return true;
+                            if (it.sellerEmail && serverUser.email && String(it.sellerEmail).toLowerCase() === String(serverUser.email).toLowerCase()) return true;
+                            if (it.sellerMobile && serverUser.sellerProfile?.mobileNumber && String(it.sellerMobile) === String(serverUser.sellerProfile.mobileNumber)) return true;
+                            return false;
+                          } catch (e) { return false; }
+                        });
+                        if (sellerItems.length === 0) return null;
+                        const sellerTotal = sellerItems.reduce((sum: number, it: any) => sum + (Number(it.price) || 0) * (Number(it.quantity) || 0), 0);
 
-                            return (
-                              <div key={it._id || (it.product?._id || it.product)} className="flex items-center gap-2 py-1">
-                                <img src={it.product?.images?.[0] || "/placeholder.png"} className="w-10 h-10 object-cover rounded" />
-                                <div className="flex-1">{it.name} × {it.quantity}
-                                  <div className="text-xs text-muted-foreground">Seller: {it.sellerName || it.sellerEmail || '—'}</div>
-                                </div>
-                                <div className="text-sm">{formatCurrency(Number(it.price) * Number(it.quantity))}</div>
-                                {belongsToMe ? (
-                                  <div className="ml-2">
-                                    {/* If user is not signed in with Clerk, prompt sign-in instead of showing the select */}
-                                    {!isSignedIn ? (
-                                      <button
-                                        onClick={() => openSignIn()}
-                                        className="ml-2 px-2 py-1 text-sm border rounded-lg bg-yellow-50"
-                                      >
-                                        Sign in to update
-                                      </button>
-                                    ) : (
-                                      <select
-                                        value={it.itemStatus || 'Pending'}
-                                        onChange={async (e) => {
-                                          const newStatus = e.target.value;
-                                          const itemId = it._id;
-                                          if (!itemId) return;
-                                          setUpdatingItem((s) => ({ ...s, [itemId]: true }));
-                                          try {
-                                            await orderService.updateOrderItemStatus(o._id, itemId, newStatus);
-                                          } catch (err: any) {
-                                            const statusCode = err?.response?.status;
-                                            // if unauthenticated, open Clerk sign-in
-                                            if (statusCode === 401) {
-                                              openSignIn();
-                                            } else {
-                                              alert('Failed to update item status');
-                                            }
-                                          } finally {
-                                            setUpdatingItem((s) => ({ ...s, [itemId]: false }));
-                                            // refresh orders list to reflect change
-                                            orderService.getSellerOrders({ limit: 50 }).then((r) => setMyOrders(r.data.orders)).catch(() => {});
-                                          }
-                                        }}
-                                        disabled={!!updatingItem[it._id]}
-                                        className="ml-2 px-2 py-1 text-sm border rounded-lg"
-                                      >
-                                        {['Pending','Processing','Shipped','Delivered','Cancelled'].map((s) => (
-                                          <option key={s} value={s}>{s}</option>
-                                        ))}
-                                      </select>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <div className="ml-2 text-xs text-muted-foreground">{it.itemStatus || 'Pending'}</div>
-                                )}
+                        return (
+                          <div key={o._id} className="p-3 border rounded-lg">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="font-medium">Order #{o._id.slice(-8).toUpperCase()}</div>
+                                <div className="text-sm text-muted-foreground">{new Date(o.createdAt).toLocaleString()}</div>
                               </div>
-                            );
-                          })}
-                        </div>
-                      </div>
+                              <div className="text-right">
+                                <div className="text-sm">{o.status}</div>
+                                <div className="text-sm font-semibold text-primary">{formatCurrency(sellerTotal)}</div>
+                              </div>
+                            </div>
+                            <div className="mt-2 text-sm">
+                              {sellerItems.map((it: any) => {
+                                const itemId = it._id;
+                                return (
+                                  <div key={it._id || (it.product?._id || it.product)} className="flex items-center gap-2 py-1">
+                                    <img src={it.product?.images?.[0] || "/placeholder.png"} className="w-10 h-10 object-cover rounded" />
+                                    <div className="flex-1">{it.name} × {it.quantity}
+                                      <div className="text-xs text-muted-foreground">Seller: {it.sellerName || it.sellerEmail || '—'}</div>
+                                    </div>
+                                    <div className="text-sm">{formatCurrency((Number(it.price) || 0) * (Number(it.quantity) || 0))}</div>
+                                    <div className="ml-2">
+                                      {!isSignedIn ? (
+                                        <button
+                                          onClick={() => openSignIn()}
+                                          className="ml-2 px-2 py-1 text-sm border rounded-lg bg-yellow-50"
+                                        >
+                                          Sign in to update
+                                        </button>
+                                      ) : (
+                                        <select
+                                          value={it.itemStatus || 'Pending'}
+                                          onChange={async (e) => {
+                                            const newStatus = e.target.value;
+                                            if (!itemId) return;
+                                            setUpdatingItem((s) => ({ ...s, [itemId]: true }));
+                                            try {
+                                              await orderService.updateOrderItemStatus(o._id, itemId, newStatus);
+                                            } catch (err: any) {
+                                              const statusCode = err?.response?.status;
+                                              if (statusCode === 401) {
+                                                openSignIn();
+                                              } else {
+                                                alert('Failed to update item status');
+                                              }
+                                            } finally {
+                                              setUpdatingItem((s) => ({ ...s, [itemId]: false }));
+                                              orderService.getSellerOrders({ limit: 50 }).then((r) => setMyOrders(r.data.orders)).catch(() => {});
+                                            }
+                                          }}
+                                          disabled={!!updatingItem[it._id]}
+                                          className="ml-2 px-2 py-1 text-sm border rounded-lg"
+                                        >
+                                          {['Pending','Processing','Shipped','Delivered','Cancelled'].map((s) => (
+                                            <option key={s} value={s}>{s}</option>
+                                          ))}
+                                        </select>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()
                     ))}
                   </div>
                 )}

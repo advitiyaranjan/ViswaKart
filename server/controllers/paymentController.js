@@ -19,13 +19,25 @@ exports.createPaymentIntent = async (req, res) => {
   const dbProducts = await Product.find({ _id: { $in: productIds } }).lean();
   const productMap = Object.fromEntries(dbProducts.map((p) => [p._id.toString(), p]));
 
+  const getFinalSellingPrice = (product) => {
+    const mrp = Number(product.originalPrice ?? product.price ?? 0);
+    const discountPct = Number(product.discount ?? 0);
+    const discount = Number.isFinite(discountPct) ? Math.max(0, Math.min(100, discountPct)) : 0;
+
+    if (product.originalPrice !== undefined && product.originalPrice !== null) {
+      return parseFloat((mrp * (1 - discount / 100)).toFixed(2));
+    }
+
+    return Number(product.price ?? 0);
+  };
+
   const itemsPrice = items.reduce((sum, item) => {
     const p = productMap[item.product];
     if (!p) throw new Error(`Product ${item.product} not found`);
-    return sum + p.price * item.quantity;
+    return sum + getFinalSellingPrice(p) * item.quantity;
   }, 0);
 
-  const taxPrice = itemsPrice * 0.08;
+  const taxPrice = 0;
   const total = itemsPrice - couponDiscount + shippingPrice + taxPrice;
   // Stripe expects amount in the smallest currency unit (paise for INR)
   const amountInPaise = Math.round(total * 100);
@@ -68,6 +80,18 @@ exports.confirmOrder = async (req, res) => {
   const dbProducts = await Product.find({ _id: { $in: productIds } }).lean();
   const productMap = Object.fromEntries(dbProducts.map((p) => [p._id.toString(), p]));
 
+  const getFinalSellingPrice = (product) => {
+    const mrp = Number(product.originalPrice ?? product.price ?? 0);
+    const discountPct = Number(product.discount ?? 0);
+    const discount = Number.isFinite(discountPct) ? Math.max(0, Math.min(100, discountPct)) : 0;
+
+    if (product.originalPrice !== undefined && product.originalPrice !== null) {
+      return parseFloat((mrp * (1 - discount / 100)).toFixed(2));
+    }
+
+    return Number(product.price ?? 0);
+  };
+
   const resolvedItems = items.map((item) => {
     const p = productMap[item.product];
     if (!p) throw new Error(`Product ${item.product} not found`);
@@ -75,7 +99,7 @@ exports.confirmOrder = async (req, res) => {
       product: p._id,
       name: p.name,
       image: p.images?.[0] || "",
-      price: p.price,
+      price: getFinalSellingPrice(p),
       quantity: item.quantity,
     };
   });

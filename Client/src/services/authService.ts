@@ -12,6 +12,7 @@ export interface LoginData {
 }
 
 export interface AddressData {
+  name?: string;
   label?: string;
   phone?: string;
   street: string;

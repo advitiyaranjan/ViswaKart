@@ -146,6 +146,11 @@ export default function Homepage() {
                     <ChevronRight className="w-5 h-5 ml-1" />
                   </Button>
                 </Link>
+                <Link to="/products">
+                  <Button variant="secondary" size="lg" className="bg-white text-slate-900 hover:bg-slate-100 font-semibold">
+                    Explore All Products
+                  </Button>
+                </Link>
                 <Link to="/products?sort=-ratings">
                   <Button variant="outline" size="lg" className="border-white/30 text-white hover:bg-white/10">
                     Top Rated

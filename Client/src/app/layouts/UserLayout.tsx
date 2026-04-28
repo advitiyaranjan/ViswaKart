@@ -307,8 +307,15 @@ export default function UserLayout() {
 
       {/* Mobile Menu */}
       {mobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 top-[128px] bg-background z-40 p-4">
+        <div className="md:hidden fixed inset-0 top-[128px] bg-background z-40 p-4 overflow-y-auto">
           <nav className="space-y-4">
+            <Link
+              to="/products"
+              className="block text-lg font-semibold text-primary hover:text-primary/80 transition-colors"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              All Products
+            </Link>
             {categories.map((category) => (
               <Link
                 key={category._id}

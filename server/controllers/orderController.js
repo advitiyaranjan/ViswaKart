@@ -73,7 +73,7 @@ exports.createOrder = async (req, res) => {
       name: dbProduct.name,
       image: dbProduct.images && dbProduct.images.length ? dbProduct.images[0] : "",
       // Snapshot both original and final prices so financials remain auditable
-      originalPrice: basePrice,
+      originalPrice: mrp,
       discount: discount,
       price: finalPrice,
       quantity: Number(item.quantity) || 1,
@@ -92,7 +92,7 @@ exports.createOrder = async (req, res) => {
   const itemsPrice = resolvedItems.reduce((s, i) => s + i.price * i.quantity, 0);
   // Allow client to pass shippingPrice (e.g., Buy Now delivery selection). Fallback to default logic.
   const shippingPrice = typeof shippingPriceFromClient === "number" ? shippingPriceFromClient : (itemsPrice > 50 ? 0 : 9.99);
-  const taxPrice = parseFloat((itemsPrice * 0.1).toFixed(2));
+  const taxPrice = 0;
   const totalPrice = parseFloat((itemsPrice + shippingPrice + taxPrice).toFixed(2));
 
   const order = await Order.create({
@@ -117,56 +117,57 @@ exports.createOrder = async (req, res) => {
     })
     .catch(() => {});
 
-  // Notify each seller about items sold (group by seller id or by seller email for unlinked sellers)
-  const sellerItemsByUser = {};
-  const sellerItemsByEmail = {};
-  for (const item of resolvedItems) {
-    const prod = productMap[item.product.toString()];
-    const sellerId = item.seller ? String(item.seller) : null;
-    if (sellerId) {
-      sellerItemsByUser[sellerId] = sellerItemsByUser[sellerId] || [];
-      sellerItemsByUser[sellerId].push({ productId: prod._id, name: prod.name, quantity: item.quantity, price: item.price });
-    } else if (item.sellerEmail) {
-      const emailKey = String(item.sellerEmail).toLowerCase();
-      sellerItemsByEmail[emailKey] = sellerItemsByEmail[emailKey] || [];
-      sellerItemsByEmail[emailKey].push({ productId: prod._id, name: prod.name, quantity: item.quantity, price: item.price });
-    }
-  }
-
   // Fetch buyer details once
   const buyer = await User.findById(req.user.id).lean();
 
-  // Send notifications to linked users
-  for (const sellerId of Object.keys(sellerItemsByUser)) {
+  // Notify each seller about items sold — send a separate email per item
+  for (const item of resolvedItems) {
     try {
-      const sellerUser = await User.findById(sellerId).lean();
-      if (!sellerUser || !sellerUser.email) continue;
-      sendSellerOrderNotificationEmail(
-        sellerUser.email,
-        sellerUser.sellerProfile?.name || sellerUser.name || "Seller",
-        sellerItemsByUser[sellerId],
-        {
-          buyerName: buyer?.name || "",
-          buyerEmail: buyer?.email || "",
-          shippingAddress,
-        },
-        order
-      ).catch(() => {});
-    } catch (err) {
-      // ignore per-seller errors
-    }
-  }
+      const prod = productMap[item.product.toString()];
 
-  // Send notifications to email-only sellers (try to resolve to a registered user first)
-  for (const emailKey of Object.keys(sellerItemsByEmail)) {
-    try {
-      const resolvedUser = await User.findOne({ email: emailKey }).lean();
-      const toEmail = emailKey;
-      const sellerName = resolvedUser ? (resolvedUser.sellerProfile?.name || resolvedUser.name || "Seller") : emailKey;
+      // Resolve recipient email and name
+      let toEmail = null;
+      let sellerName = "Seller";
+
+      if (item.seller) {
+        const sellerUser = sellerMap[String(item.seller)];
+        if (sellerUser && sellerUser.email) {
+          toEmail = sellerUser.email;
+          sellerName = sellerUser.sellerProfile?.name || sellerUser.name || sellerUser.email || "Seller";
+        } else if (prod?.sellerEmail) {
+          toEmail = prod.sellerEmail;
+          sellerName = prod.sellerName || prod.sellerEmail || "Seller";
+        }
+      } else if (item.sellerEmail) {
+        const emailKey = String(item.sellerEmail).toLowerCase();
+        const matchedUser = emailUserMap[emailKey];
+        if (matchedUser && matchedUser.email) {
+          toEmail = matchedUser.email;
+          sellerName = matchedUser.sellerProfile?.name || matchedUser.name || matchedUser.email || "Seller";
+        } else {
+          toEmail = item.sellerEmail;
+          sellerName = item.sellerName || item.sellerEmail || "Seller";
+        }
+      } else if (prod?.sellerEmail) {
+        const emailKey = String(prod.sellerEmail).toLowerCase();
+        const matchedUser = emailUserMap[emailKey];
+        if (matchedUser && matchedUser.email) {
+          toEmail = matchedUser.email;
+          sellerName = matchedUser.sellerProfile?.name || matchedUser.name || matchedUser.email || "Seller";
+        } else {
+          toEmail = prod.sellerEmail;
+          sellerName = prod.sellerName || prod.sellerEmail || "Seller";
+        }
+      }
+
+      if (!toEmail) continue;
+
+      const itemPayload = [{ productId: prod._id, name: prod.name, quantity: item.quantity, price: item.price }];
+
       sendSellerOrderNotificationEmail(
         toEmail,
         sellerName,
-        sellerItemsByEmail[emailKey],
+        itemPayload,
         {
           buyerName: buyer?.name || "",
           buyerEmail: buyer?.email || "",
@@ -175,7 +176,7 @@ exports.createOrder = async (req, res) => {
         order
       ).catch(() => {});
     } catch (err) {
-      // ignore
+      // ignore per-item notification errors
     }
   }
 
