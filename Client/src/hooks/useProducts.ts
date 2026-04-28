@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { productService } from "../services/productService";
+import { productService, getCachedProductsData } from "../services/productService";
 import type { ProductQueryParams } from "../services/productService";
 
 interface Product {
@@ -28,17 +28,27 @@ interface UseProductsReturn {
 }
 
 export function useProducts(params: ProductQueryParams = {}): UseProductsReturn {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [total, setTotal] = useState(0);
-  const [pages, setPages] = useState(1);
+  const initialCache = getCachedProductsData(params);
+  const [products, setProducts] = useState<Product[]>(() => initialCache?.products ?? []);
+  const [total, setTotal] = useState(() => initialCache?.total ?? 0);
+  const [pages, setPages] = useState(() => initialCache?.pages ?? 1);
   const [page, setPage] = useState(1);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => !initialCache);
   const [error, setError] = useState<string | null>(null);
   const [trigger, setTrigger] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    setIsLoading(true);
+    const cached = getCachedProductsData(params);
+    if (cached) {
+      setProducts(cached.products ?? []);
+      setTotal(cached.total ?? 0);
+      setPages(cached.pages ?? 1);
+      setPage(cached.page ?? 1);
+      setIsLoading(false);
+    } else {
+      setIsLoading(true);
+    }
     setError(null);
 
     productService

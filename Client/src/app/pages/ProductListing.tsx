@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router";
 import { SlidersHorizontal } from "lucide-react";
 import { ProductCard } from "../components/ProductCard";
 import { Button } from "../components/Button";
-import { productService, categoryService } from "../../services/productService";
+import { productService, categoryService, getCachedCategoriesData, getCachedProductsData } from "../../services/productService";
 import { formatCurrency } from "../../lib/currency";
 import { ProductCardSkeleton } from "../components/LoadingStates";
 import * as Slider from "@radix-ui/react-slider";
@@ -31,15 +31,26 @@ interface Product {
 
 export default function ProductListing() {
   const [searchParams] = useSearchParams();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [total, setTotal] = useState(0);
-  const [pages, setPages] = useState(1);
+  const initialCategory = searchParams.get("category") ?? "";
+  const initialQuery = {
+    page: 1,
+    limit: 12,
+    category: initialCategory || undefined,
+    minPrice: undefined,
+    maxPrice: undefined,
+    sort: "-createdAt",
+  };
+  const initialProductsCache = getCachedProductsData(initialQuery);
+  const initialCategoriesCache = getCachedCategoriesData();
+  const [products, setProducts] = useState<Product[]>(() => initialProductsCache?.products ?? []);
+  const [categories, setCategories] = useState<Category[]>(() => initialCategoriesCache?.categories ?? []);
+  const [total, setTotal] = useState(() => initialProductsCache?.total ?? 0);
+  const [pages, setPages] = useState(() => initialProductsCache?.pages ?? 1);
   const [page, setPage] = useState(1);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => !initialProductsCache);
 
   const [selectedCategory, setSelectedCategory] = useState(
-    () => searchParams.get("category") ?? ""
+    () => initialCategory
   );
   const [priceRange, setPriceRange] = useState([0, 500]);
   const [selectedRating, setSelectedRating] = useState(0);
@@ -55,20 +66,29 @@ export default function ProductListing() {
 
   // Load categories once
   useEffect(() => {
-    categoryService.getCategories().then((res) => setCategories(res.data.categories));
+    categoryService.getCategories().then((res) => setCategories(res.data.categories)).catch(() => {});
   }, []);
 
   const fetchProducts = useCallback(() => {
-    setIsLoading(true);
+    const query = {
+      page,
+      limit: 12,
+      category: selectedCategory || undefined,
+      minPrice: priceRange[0] > 0 ? priceRange[0] : undefined,
+      maxPrice: priceRange[1] < 500 ? priceRange[1] : undefined,
+      sort: sortBy,
+    };
+    const cached = getCachedProductsData(query);
+    if (cached) {
+      setProducts(cached.products ?? []);
+      setTotal(cached.total ?? 0);
+      setPages(cached.pages ?? 1);
+      setIsLoading(false);
+    } else {
+      setIsLoading(true);
+    }
     productService
-      .getProducts({
-        page,
-        limit: 12,
-        category: selectedCategory || undefined,
-        minPrice: priceRange[0] > 0 ? priceRange[0] : undefined,
-        maxPrice: priceRange[1] < 500 ? priceRange[1] : undefined,
-        sort: sortBy,
-      })
+      .getProducts(query)
       .then((res) => {
         setProducts(res.data.products);
         setTotal(res.data.total);

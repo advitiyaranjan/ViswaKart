@@ -2,7 +2,7 @@ import { Link } from "react-router";
 import { ChevronRight, TrendingUp, Zap, ShieldCheck, Truck, RotateCcw, Headphones, Loader2, CheckCircle2 } from "lucide-react";
 import { Button } from "../components/Button";
 import { ProductCard } from "../components/ProductCard";
-import { productService } from "../../services/productService";
+import { productService, getCachedProductsData } from "../../services/productService";
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { formatCurrency } from "../../lib/currency";
@@ -29,9 +29,14 @@ interface Product {
 }
 
 export default function Homepage() {
-  const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
-  const [trendingProducts, setTrendingProducts] = useState<Product[]>([]);
-  const [productsLoading, setProductsLoading] = useState(true);
+  const initialFeaturedCache = getCachedProductsData({ sort: "-createdAt", limit: 4 });
+  const initialTrendingCache = getCachedProductsData({ sort: "-ratings", limit: 12 });
+  const initialFeaturedProducts: Product[] = initialFeaturedCache?.products ?? [];
+  const initialFeaturedIds = new Set(initialFeaturedProducts.map((p) => p._id));
+  const initialTrendingProducts: Product[] = (initialTrendingCache?.products ?? []).filter((p: Product) => !initialFeaturedIds.has(p._id)).slice(0, 4);
+  const [featuredProducts, setFeaturedProducts] = useState<Product[]>(initialFeaturedProducts);
+  const [trendingProducts, setTrendingProducts] = useState<Product[]>(initialTrendingProducts);
+  const [productsLoading, setProductsLoading] = useState(() => !(initialFeaturedCache || initialTrendingCache));
 
   // Subscribe state
   const [email, setEmail] = useState("");
@@ -39,7 +44,7 @@ export default function Homepage() {
   const [subMessage, setSubMessage] = useState("");
 
   useEffect(() => {
-    setProductsLoading(true);
+    if (!initialFeaturedCache && !initialTrendingCache) setProductsLoading(true);
     Promise.all([
       // Show newest products in the hero area (new arrivals)
       productService.getProducts({ sort: "-createdAt", limit: 4 }),
