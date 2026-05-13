@@ -9,6 +9,11 @@ export interface ProductQueryParams {
   maxPrice?: number;
   sort?: string;
   featured?: boolean;
+  minRating?: number;
+  inStock?: boolean;
+  seller?: string;
+  sellerEmail?: string;
+  includeInactive?: boolean;
 }
 
 const PRODUCT_CACHE_PREFIX = "product-cache:";
@@ -84,15 +89,15 @@ export const productService = {
 
   deleteProduct: (id: string) => api.delete(`/products/${id}`),
 
-  addReview: (id: string, data: { rating: number; comment: string }) =>
-    api.post(`/products/${id}/reviews`, data),
+  addReview: (id: string, data: { rating: number; comment: string }) => api.post(`/products/${id}/reviews`, data),
 };
 
 export const categoryService = {
-  getCategories: () => api.get("/categories").then((res) => {
-    writeCache(buildCacheKey("categories", "all"), res.data);
-    return res;
-  }),
+  getCategories: () =>
+    api.get("/categories").then((res) => {
+      writeCache(buildCacheKey("categories", "all"), res.data);
+      return res;
+    }),
   getCategory: (id: string) => api.get(`/categories/${id}`),
   createCategory: (data: object) => api.post("/categories", data),
   updateCategory: (id: string, data: object) => api.put(`/categories/${id}`, data),

@@ -1,676 +1,550 @@
-import React, { useEffect, useRef, useState } from "react";
-import { useUser, useClerk } from "@clerk/react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { toast } from "sonner";
+import { Store, Trash2, ExternalLink } from "lucide-react";
 import { authService } from "../../../services/authService";
 import { userService } from "../../../services/userService";
 import { productService, categoryService } from "../../../services/productService";
-import api from "../../../services/api";
-import { orderService } from "../../../services/orderService";
 import { Button } from "../../components/Button";
+import { ProductImage } from "../../components/ProductImage";
 import ImageUploader from "../../components/ImageUploader";
 import { formatCurrency } from "../../../lib/currency";
+import { getProductPricing } from "../../../lib/commerce";
+
+interface ServerUser {
+  _id: string;
+  name: string;
+  email?: string;
+  role?: string;
+  isVerified?: boolean;
+  isSeller?: boolean;
+  sellerApproved?: boolean;
+  sellerRequested?: boolean;
+  sellerProfile?: { name?: string; hostelNumber?: string; roomNumber?: string; courseYear?: string; mobileNumber?: string };
+}
+
+interface Listing {
+  _id: string;
+  name: string;
+  price: number;
+  originalPrice?: number;
+  stock: number;
+  sold?: boolean;
+  isActive?: boolean;
+  images?: string[];
+  category?: { name: string };
+}
+
+interface Draft {
+  name: string;
+  price: string;
+  originalPrice: string;
+  stock: string;
+  description: string;
+  specs: string;
+  category: string;
+  productAge: string;
+  images: string[];
+  sellerMobile: string;
+  sellerHostel: string;
+  sellerRoom: string;
+}
+
+const EMPTY_DRAFT: Draft = {
+  name: "",
+  price: "",
+  originalPrice: "",
+  stock: "1",
+  description: "",
+  specs: "",
+  category: "",
+  productAge: "",
+  images: [],
+  sellerMobile: "",
+  sellerHostel: "",
+  sellerRoom: "",
+};
+const fieldClass =
+  "w-full rounded-xl border border-border bg-white px-3 py-2.5 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15";
+
+function readDraft(key: string): Partial<Draft> {
+  try {
+    return JSON.parse(localStorage.getItem(key) || "{}") ?? {};
+  } catch {
+    return {};
+  }
+}
 
 export default function SellProductPage() {
-  const [serverUser, setServerUser] = useState<any>(null);
+  const [serverUser, setServerUser] = useState<ServerUser | null>(null);
+  const [categories, setCategories] = useState<{ _id: string; name: string }[]>([]);
+  const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
-  const [pageReady, setPageReady] = useState(false);
-  const [showRequestForm, setShowRequestForm] = useState(false);
-
-  // Product form
-  const [name, setName] = useState("");
-  // Keep input state as strings so the field can be cleared by backspace
-  const [price, setPrice] = useState("");
-  const [discount, setDiscount] = useState("");
-  const [specs, setSpecs] = useState("");
-  const [shortDescription, setShortDescription] = useState("");
-  const [category, setCategory] = useState("");
-  const [productAge, setProductAge] = useState("");
-  const [images, setImages] = useState<string[]>([]);
-
-  const [categories, setCategories] = useState<any[]>([]);
-  const [myProducts, setMyProducts] = useState<any[]>([]);
-  const [myOrders, setMyOrders] = useState<any[]>([]);
-  const [updatingItem, setUpdatingItem] = useState<Record<string, boolean>>({});
-  const [debugProducts, setDebugProducts] = useState<any[] | null>(null);
-  const [debugLoading, setDebugLoading] = useState(false);
-  const lastLoadedUserIdRef = useRef<string>("");
-  const draftRestoredForRef = useRef<string>("");
-
-  // Request form
-  const [hostelNumber, setHostelNumber] = useState("");
-  const [courseYear, setCourseYear] = useState("");
-  const [mobileNumber, setMobileNumber] = useState("");
-  // Seller contact fields for product listings (auto-filled)
-  const [sellerMobile, setSellerMobile] = useState("");
-  const [sellerHostel, setSellerHostel] = useState("");
-  const [sellerRoom, setSellerRoom] = useState("");
-  // Draft autosave key helper to preserve form across reloads
-  const DRAFT_PREFIX = "sell:draft:";
-  const getDraftKey = () => `${DRAFT_PREFIX}${serverUser?._id || "anon"}`;
-
-  // Restore draft once per user key to avoid re-applying draft state after unrelated list refreshes.
-  useEffect(() => {
-    const key = getDraftKey();
-    if (draftRestoredForRef.current === key) return;
-    draftRestoredForRef.current = key;
-    try {
-      const raw = localStorage.getItem(key);
-      if (!raw) return;
-      const draft = JSON.parse(raw);
-      if (!draft) return;
-      // Only overwrite empty fields to avoid clobbering server-provided defaults
-      setName((v) => v || draft.name || "");
-      setPrice((v) => v || draft.price || "");
-      setDiscount((v) => v || draft.discount || "");
-      setSpecs((v) => v || draft.specs || "");
-      setShortDescription((v) => v || draft.shortDescription || "");
-      setCategory((v) => v || draft.category || "");
-      setProductAge((v) => v || draft.productAge || "");
-      setImages((v) => (Array.isArray(v) && v.length ? v : draft.images || []));
-      setSellerMobile((v) => v || draft.sellerMobile || "");
-      setSellerHostel((v) => v || draft.sellerHostel || "");
-      setSellerRoom((v) => v || draft.sellerRoom || "");
-    } catch (e) {
-      // ignore parse errors
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverUser]);
-
-  // Autosave draft when form fields change (debounced)
-  useEffect(() => {
-    const key = getDraftKey();
-    const payload = {
-      name,
-      price,
-      discount,
-      specs,
-      shortDescription,
-      category,
-      productAge,
-      images,
-      sellerMobile,
-      sellerHostel,
-      sellerRoom,
-    };
-    const t = setTimeout(() => {
-      try {
-        localStorage.setItem(key, JSON.stringify(payload));
-      } catch (e) {}
-    }, 500);
-    return () => clearTimeout(t);
-    // include serverUser so draft key changes when user logs in/out
-  }, [name, price, discount, specs, shortDescription, category, productAge, images, sellerMobile, sellerHostel, sellerRoom, serverUser]);
-  const [requestSent, setRequestSent] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
+  const [errors, setErrors] = useState<Partial<Record<keyof Draft, string>>>({});
   const [saving, setSaving] = useState(false);
-  const [statusMessage, setStatusMessage] = useState("");
-  // image uploads handled by ImageUploader
   const [imagesUploading, setImagesUploading] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [requestMobile, setRequestMobile] = useState("");
+  const [requesting, setRequesting] = useState(false);
+  const draftKey = `sell:draft:${serverUser?._id || "anon"}`;
 
   useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      setLoading(true);
-      try {
-        const [meRes, catRes] = await Promise.all([
-          authService.getMe(),
-          categoryService.getCategories(),
-        ]);
-        if (cancelled) return;
-        setServerUser(meRes.data.user);
-        setCategories(catRes.data?.categories || []);
-      } catch (e) {
-        if (!cancelled) {
-          setCategories([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-          setPageReady(true);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Re-fetch server-side user when Clerk sign-in state changes so serverUser is available
-  const { isSignedIn } = useUser();
-  const { openSignIn } = useClerk();
-  useEffect(() => {
-    if (!pageReady || !isSignedIn) return;
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const meRes = await authService.getMe();
-        if (cancelled) return;
-        const nextUser = meRes.data.user;
-        setServerUser((prev: any) => {
-          if (prev?._id === nextUser?._id && prev?.sellerApproved === nextUser?.sellerApproved && prev?.isSeller === nextUser?.isSeller) {
-            return prev;
-          }
-          return nextUser;
+    let active = true;
+    Promise.all([authService.getMe(), categoryService.getCategories()])
+      .then(([me, cats]) => {
+        if (!active) return;
+        const user: ServerUser = me.data.user;
+        setServerUser(user);
+        setCategories(cats.data?.categories ?? []);
+        const saved = readDraft(`sell:draft:${user._id}`);
+        setDraft({
+          ...EMPTY_DRAFT,
+          ...saved,
+          images: Array.isArray(saved.images) ? saved.images : [],
+          sellerMobile: saved.sellerMobile || user.sellerProfile?.mobileNumber || "",
+          sellerHostel: saved.sellerHostel || user.sellerProfile?.hostelNumber || "",
+          sellerRoom: saved.sellerRoom || user.sellerProfile?.roomNumber || "",
         });
-      } catch (e) {
-        // ignore
-      }
-    })();
-
+        setRequestMobile(user.sellerProfile?.mobileNumber || "");
+      })
+      .catch(() => active && setLoadError(true))
+      .finally(() => active && setLoading(false));
     return () => {
-      cancelled = true;
-    };
-  }, [isSignedIn, pageReady]);
-
-  useEffect(() => {
-    if (!serverUser) return;
-    setRequestSent(Boolean(serverUser.sellerRequested));
-    // Pre-fill contact fields once from profile data, while still respecting any draft/user input.
-    setSellerMobile((v) => v || serverUser?.sellerProfile?.mobileNumber || "");
-    setSellerHostel((v) => v || serverUser?.sellerProfile?.hostelNumber || "");
-    setSellerRoom((v) => v || serverUser?.sellerProfile?.roomNumber || "");
-  }, [serverUser]);
-
-  useEffect(() => {
-    if (!serverUser) return;
-    if (lastLoadedUserIdRef.current === serverUser._id) return;
-    lastLoadedUserIdRef.current = serverUser._id;
-    const isEligibleDomain = (serverUser?.email || "").endsWith("@iiitm.ac.in");
-    let cancelled = false;
-
-    (async () => {
-      if (serverUser.isSeller || serverUser.sellerApproved || isEligibleDomain) {
-        try {
-          const res = await productService.getProducts({ seller: serverUser._id, limit: 50 });
-          let serverProducts = res?.data?.products || [];
-
-          if ((!serverProducts || serverProducts.length === 0) && serverUser?.email) {
-            try {
-              const r2 = await productService.getProducts({ sellerEmail: serverUser.email, limit: 50 });
-              serverProducts = r2?.data?.products || serverProducts;
-            } catch (e) {
-              // ignore
-            }
-          }
-          if ((!serverProducts || serverProducts.length === 0) && serverUser?.sellerProfile?.mobileNumber) {
-            try {
-              const r3 = await productService.getProducts({ sellerMobile: serverUser.sellerProfile.mobileNumber, limit: 50 });
-              serverProducts = r3?.data?.products || serverProducts;
-            } catch (e) {
-              // ignore
-            }
-          }
-
-          if (!cancelled) setMyProducts(serverProducts);
-        } catch (e) {
-          if (!cancelled) setMyProducts([]);
-        }
-
-        if (serverUser.isSeller || serverUser.sellerApproved) {
-          try {
-            const r = await orderService.getSellerOrders({ limit: 50 });
-            if (!cancelled) setMyOrders(r.data.orders || []);
-          } catch (e) {
-            if (!cancelled) setMyOrders([]);
-          }
-        } else if (!cancelled) {
-          setMyOrders([]);
-        }
-      }
-
-      if (import.meta.env.DEV) {
-        await fetchDebugProducts(serverUser._id).catch(() => {});
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [serverUser]);
-
-  // Listen for order item updates (from other tabs or actions) and refresh seller orders
-  useEffect(() => {
-    const handler = (e: any) => {
-      orderService.getSellerOrders({ limit: 50 }).then((r) => setMyOrders(r.data.orders)).catch(() => {});
-    };
-    window.addEventListener("order:itemUpdated", handler as EventListener);
-    const storageHandler = (ev: StorageEvent) => {
-      if (ev.key === "order:update") {
-        try { const payload = JSON.parse(ev.newValue || ev.oldValue || "null"); } catch (e) {}
-        orderService.getSellerOrders({ limit: 50 }).then((r) => setMyOrders(r.data.orders)).catch(() => {});
-      }
-    };
-    window.addEventListener("storage", storageHandler);
-    return () => {
-      window.removeEventListener("order:itemUpdated", handler as EventListener);
-      window.removeEventListener("storage", storageHandler);
+      active = false;
     };
   }, []);
 
-  const eligibleDomain = serverUser?.email?.endsWith("@iiitm.ac.in");
+  const eligible = Boolean(
+    serverUser &&
+    (serverUser.role === "admin" ||
+      (serverUser.isSeller && serverUser.sellerApproved) ||
+      (serverUser.isVerified && serverUser.email?.toLowerCase().endsWith("@iiitm.ac.in"))),
+  );
 
-  const handleRequestAccess = async () => {
-    try {
-      await userService.requestSellerAccess({ mobileNumber, message: "Requested via app" });
-      alert("Request submitted to admin");
-      setRequestSent(true);
-      setShowRequestForm(false);
-    } catch (err) {
-      alert("Failed to submit request");
-    }
-  };
+  useEffect(() => {
+    if (!serverUser || !eligible) return;
+    productService
+      .getProducts({ seller: serverUser._id, limit: 50 })
+      .then((res) => setListings(res.data.products ?? []))
+      .catch(() => {});
+  }, [serverUser, eligible]);
 
-  const handleCreateProduct = async () => {
-    const imagesPayload = images.filter(Boolean);
-    const payload: any = {
-      name,
-      // shortDescription is the main product description shown on the product page
-      description: shortDescription || name,
-      price: Number(price),
-      discount: Number(discount || 0),
-      specifications: specs,
-      category,
-      productAge,
-      images: imagesPayload,
-      stock: 1,
-      sellerProfile: {
-        name: serverUser?.sellerProfile?.name || serverUser?.name,
-        hostelNumber: serverUser?.sellerProfile?.hostelNumber || sellerHostel || hostelNumber,
-        roomNumber: serverUser?.sellerProfile?.roomNumber || sellerRoom,
-        courseYear: serverUser?.sellerProfile?.courseYear || courseYear,
-        mobileNumber: serverUser?.sellerProfile?.mobileNumber || sellerMobile || mobileNumber,
-      },
-    };
-    try {
-      setSaving(true);
-      setStatusMessage("");
-      const res = await productService.createProduct(payload);
-      const created = res?.data?.product;
-      // Immediately show the created product in the seller's listings
-      if (created) {
-        setMyProducts((prev) => [created, ...prev.filter((p) => p._id !== created._id)]);
-        // broadcast event so other pages (homepage) can update optimistically
-        try {
-          window.dispatchEvent(new CustomEvent('app:productCreated', { detail: created }));
-        } catch (e) {}
-      }
-      // Refresh products from server to ensure consistent data (populated fields, server defaults)
+  // Autosave so a half-written listing survives closing the dialog.
+  useEffect(() => {
+    if (!serverUser) return;
+    const timer = setTimeout(() => {
       try {
-        const listRes = await productService.getProducts({ seller: serverUser._id, limit: 50 });
-        let serverProducts = listRes.data.products || [];
-        // If server returned no products but we have the created product, keep it (avoid overwriting optimistic insert)
-        if (created) {
-          const exists = serverProducts.find((p: any) => p._id === created._id);
-          if (!exists) serverProducts = [created, ...serverProducts];
-        }
-        setMyProducts(serverProducts);
-      } catch (err) {
-        // ignore — keep optimistic product already inserted
+        localStorage.setItem(draftKey, JSON.stringify(draft));
+      } catch {
+        /* storage unavailable */
       }
-      // Update debug list
-      if (import.meta.env.DEV) {
-        await fetchDebugProducts(serverUser._id).catch(() => {});
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [draft, draftKey, serverUser]);
+
+  const set = (key: keyof Draft) => (event: { target: { value: string } }) =>
+    setDraft((current) => ({ ...current, [key]: event.target.value }));
+
+  const preview = useMemo(() => {
+    const price = Number(draft.price);
+    if (!Number.isFinite(price) || price <= 0) return null;
+    return getProductPricing({ price, originalPrice: Number(draft.originalPrice) || price });
+  }, [draft.price, draft.originalPrice]);
+
+  function validate() {
+    const next: Partial<Record<keyof Draft, string>> = {};
+    const price = Number(draft.price);
+    const original = draft.originalPrice.trim() ? Number(draft.originalPrice) : price;
+    const stock = Number(draft.stock);
+    if (draft.name.trim().length < 2) next.name = "Give your product a name.";
+    if (!Number.isFinite(price) || price <= 0) next.price = "Enter the price buyers will pay.";
+    else if (!Number.isFinite(original) || original < price) next.originalPrice = "Original price can't be lower than your selling price.";
+    if (!Number.isInteger(stock) || stock < 1 || stock > 999) next.stock = "Enter how many you have (1–999).";
+    if (!draft.category) next.category = "Choose a category.";
+    if (draft.description.trim().length < 10) next.description = "Describe the product in at least 10 characters.";
+    if (!/^[0-9]{7,15}$/.test(draft.sellerMobile.replace(/\D/g, ""))) next.sellerMobile = "Enter a 7–15 digit mobile number.";
+    if (!draft.sellerHostel.trim()) next.sellerHostel = "Required so buyers can collect.";
+    if (!draft.sellerRoom.trim()) next.sellerRoom = "Required so buyers can collect.";
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  }
+
+  async function createListing(event: FormEvent) {
+    event.preventDefault();
+    if (!validate() || !serverUser) return;
+    const price = Math.round(Number(draft.price) * 100) / 100;
+    const originalPrice = draft.originalPrice.trim() ? Math.round(Number(draft.originalPrice) * 100) / 100 : price;
+    setSaving(true);
+    try {
+      const res = await productService.createProduct({
+        name: draft.name.trim(),
+        description: draft.description.trim(),
+        price,
+        originalPrice,
+        stock: Number(draft.stock),
+        specifications: draft.specs.trim() || undefined,
+        category: draft.category,
+        productAge: draft.productAge.trim(),
+        images: draft.images.filter(Boolean),
+        sellerMobile: draft.sellerMobile.replace(/\D/g, ""),
+        sellerHostelNumber: draft.sellerHostel.trim(),
+        sellerRoomNumber: draft.sellerRoom.trim(),
+      });
+      const created: Listing | undefined = res.data?.product;
+      if (created) {
+        setListings((prev) => [created, ...prev.filter((p) => p._id !== created._id)]);
+        window.dispatchEvent(new CustomEvent("app:productCreated", { detail: created }));
       }
-      // clear form
-      setName("");
-      setPrice("");
-      setDiscount("");
-      setShortDescription("");
-      setSpecs("");
-      setImages([]);
-      setProductAge("");
-      try { localStorage.removeItem(getDraftKey()); } catch (e) {}
-      setStatusMessage("Product listed successfully");
+      setDraft({ ...EMPTY_DRAFT, sellerMobile: draft.sellerMobile, sellerHostel: draft.sellerHostel, sellerRoom: draft.sellerRoom });
+      setErrors({});
+      try {
+        localStorage.removeItem(draftKey);
+      } catch {
+        /* storage unavailable */
+      }
+      toast.success("Your product is live in the store");
     } catch (err: any) {
-      setStatusMessage(err?.response?.data?.message || "Failed to create product");
+      toast.error(err?.response?.data?.message || "Your product couldn't be listed. Please try again.");
     } finally {
       setSaving(false);
-      setTimeout(() => setStatusMessage(""), 3500);
     }
-  };
+  }
 
-  const fetchDebugProducts = async (sellerId: string) => {
-    if (!sellerId && !serverUser?.email && !serverUser?.sellerProfile?.mobileNumber) return;
-    setDebugLoading(true);
+  async function removeListing(listing: Listing) {
+    if (!window.confirm(`Remove “${listing.name}” from the store? Existing orders are not affected.`)) return;
+    setRemoving(listing._id);
     try {
-      // try by id first
-      if (sellerId) {
-        const res = await api.get(`/debug/products`, { params: { seller: sellerId } });
-        if (res?.data?.products && res.data.products.length > 0) {
-          setDebugProducts(res.data.products || []);
-          return;
-        }
-      }
-
-      // fallback to email
-      if (serverUser?.email) {
-        try {
-          const r2 = await api.get(`/debug/products`, { params: { sellerEmail: serverUser.email } });
-          if (r2?.data?.products && r2.data.products.length > 0) {
-            setDebugProducts(r2.data.products || []);
-            return;
-          }
-        } catch (e) {}
-      }
-
-      // fallback to mobile
-      if (serverUser?.sellerProfile?.mobileNumber) {
-        try {
-          const r3 = await api.get(`/debug/products`, { params: { sellerMobile: serverUser.sellerProfile.mobileNumber } });
-          if (r3?.data?.products) {
-            setDebugProducts(r3.data.products || []);
-            return;
-          }
-        } catch (e) {}
-      }
-
-      // if none matched, show empty list
-      setDebugProducts([]);
-    } catch (err) {
-      setDebugProducts(null);
+      await productService.deleteProduct(listing._id);
+      setListings((prev) => prev.map((p) => (p._id === listing._id ? { ...p, isActive: false } : p)));
+      toast.success("Listing removed");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "The listing couldn't be removed.");
     } finally {
-      setDebugLoading(false);
+      setRemoving(null);
     }
-  };
+  }
 
-  if (loading) return <div>Loading…</div>;
+  async function requestAccess(event: FormEvent) {
+    event.preventDefault();
+    if (!/^[0-9]{7,15}$/.test(requestMobile.replace(/\D/g, ""))) {
+      toast.error("Enter a valid mobile number so the admin can reach you.");
+      return;
+    }
+    setRequesting(true);
+    try {
+      await userService.requestSellerAccess({ mobileNumber: requestMobile.replace(/\D/g, ""), message: "Requested via app" });
+      setServerUser((user) => (user ? { ...user, sellerRequested: true } : user));
+      toast.success("Request sent. We'll let you know once an admin approves it.");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Your request couldn't be sent.");
+    } finally {
+      setRequesting(false);
+    }
+  }
 
-  // Not eligible message
-  if (!eligibleDomain && !serverUser?.sellerApproved) {
+  if (loading) return <p className="py-6 text-muted-foreground">Loading…</p>;
+  if (loadError || !serverUser)
+    return <p className="py-6 text-destructive">We couldn't load your seller details. Please close this window and try again.</p>;
+
+  if (!eligible) {
     return (
-      <div className="py-4">
-        <h2 className="text-lg font-bold mb-2">Sell a Product</h2>
-        <div className="bg-white rounded-lg border p-4">
-          <p className="mb-3">Only IIITM users are allowed to sell products. You don’t belong to this category.</p>
-          {!showRequestForm ? (
-            <Button onClick={() => setShowRequestForm(true)} disabled={requestSent}>{requestSent ? "Request Submitted" : "Request Access from Admin"}</Button>
+      <div className="space-y-4 py-2">
+        <h2 className="flex items-center gap-2 text-lg font-bold">
+          <Store className="h-5 w-5 text-primary" /> Sell on ViswaKart
+        </h2>
+        <div className="rounded-xl border border-border bg-white p-5">
+          <p className="mb-1 font-medium">Selling is open to verified IIITM accounts.</p>
+          <p className="mb-4 text-sm text-muted-foreground">Using a different email? Ask an admin for seller access and we'll review it.</p>
+          {serverUser.sellerRequested ? (
+            <p className="rounded-lg bg-accent/40 p-3 text-sm text-accent-foreground">Your request is waiting for admin approval.</p>
           ) : (
-            <div className="space-y-3">
-              <input placeholder="Mobile Number" value={mobileNumber} onChange={(e) => setMobileNumber(e.target.value)} className="w-full p-2 border rounded" />
-              <div className="flex gap-2">
-                <Button onClick={handleRequestAccess} disabled={requestSent}>{requestSent ? "Requested" : "Send Request"}</Button>
-                <Button variant="ghost" onClick={() => setShowRequestForm(false)} disabled={requestSent}>Cancel</Button>
-              </div>
-            </div>
+            <form onSubmit={requestAccess} className="flex flex-col gap-3 sm:flex-row">
+              <label htmlFor="request-mobile" className="sr-only">
+                Mobile number
+              </label>
+              <input
+                id="request-mobile"
+                type="tel"
+                inputMode="tel"
+                placeholder="Your mobile number"
+                value={requestMobile}
+                onChange={(event) => setRequestMobile(event.target.value)}
+                className={fieldClass}
+              />
+              <Button type="submit" disabled={requesting} className="shrink-0">
+                {requesting ? "Sending…" : "Request access"}
+              </Button>
+            </form>
           )}
         </div>
       </div>
     );
   }
 
-  // Seller UI (approved or iiitm domain)
-  const parsedImages = images;
-  const isValid = name.trim() !== "" && Number(price) > 0 && category && shortDescription.trim() !== "" && sellerMobile.trim() !== "" && sellerHostel.trim() !== "" && sellerRoom.trim() !== "";
+  const fieldError = (key: keyof Draft) =>
+    errors[key] ? (
+      <p id={`sell-${key}-error`} className="mt-1 text-xs text-destructive">
+        {errors[key]}
+      </p>
+    ) : null;
+  const aria = (key: keyof Draft) => ({
+    "aria-invalid": Boolean(errors[key]),
+    "aria-describedby": errors[key] ? `sell-${key}-error` : undefined,
+  });
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Sell a Product</h2>
-        <div className="text-sm text-muted-foreground">Manage your listings and orders</div>
+    <div className="space-y-6 py-2">
+      <div>
+        <h2 className="flex items-center gap-2 text-lg font-bold">
+          <Store className="h-5 w-5 text-primary" /> Sell a product
+        </h2>
+        <p className="text-sm text-muted-foreground">Buyers pay cash when they collect. Manage handovers in the Seller Orders tab.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Form */}
-        <div className="bg-white rounded-xl border border-border p-6 shadow-sm">
-          <h3 className="text-lg font-semibold mb-3">New Listing</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium mb-1">Product Name</label>
-              <input
-                placeholder="Product Name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full pl-3 pr-4 py-2 bg-muted rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Price (₹)</label>
-              <input
-                placeholder="Price"
-                type="number"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                className="w-full pl-3 pr-4 py-2 bg-muted rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Discount %</label>
-              <input
-                placeholder="Discount %"
-                type="number"
-                value={discount}
-                onChange={(e) => setDiscount(e.target.value)}
-                className="w-full pl-3 pr-4 py-2 bg-muted rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium mb-1">Short Description</label>
-              <textarea
-                placeholder="Short description shown on product page"
-                value={shortDescription}
-                onChange={(e) => setShortDescription(e.target.value)}
-                className="w-full p-3 bg-muted rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-ring"
-                rows={2}
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium mb-1">Category</label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-4 py-2 bg-white border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="">Select category</option>
-                {categories?.map((c: any) => (
-                  <option key={c._id} value={c._id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Product Age</label>
-              <input
-                placeholder="e.g. 6 months"
-                value={productAge}
-                onChange={(e) => setProductAge(e.target.value)}
-                className="w-full pl-3 pr-4 py-2 bg-muted rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium mb-1">Specifications</label>
-              <textarea
-                placeholder="Detailed specifications (optional)"
-                value={specs}
-                onChange={(e) => setSpecs(e.target.value)}
-                className="w-full p-3 bg-muted rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-ring"
-                rows={4}
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium mb-1">Seller Mobile</label>
-              <input
-                placeholder="e.g. 9876543210"
-                value={sellerMobile}
-                onChange={(e) => setSellerMobile(e.target.value)}
-                className="w-full pl-3 pr-4 py-2 bg-muted rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-
-            <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Hostel Number</label>
-                <input
-                  placeholder="e.g. A-12"
-                  value={sellerHostel}
-                  onChange={(e) => setSellerHostel(e.target.value)}
-                  className="w-full pl-3 pr-4 py-2 bg-muted rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Room Number</label>
-                <input
-                  placeholder="e.g. 101"
-                  value={sellerRoom}
-                  onChange={(e) => setSellerRoom(e.target.value)}
-                  className="w-full pl-3 pr-4 py-2 bg-muted rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium mb-1">Images</label>
-              <div className="text-sm text-muted-foreground mb-2">Upload up to 6 images. First image will be used as thumbnail.</div>
-              <ImageUploader images={images} onChange={setImages} max={6} onUploadingChange={setImagesUploading} />
-            </div>
-          </div>
-
-            <div className="flex items-center justify-between mt-4">
-            <div className="text-sm text-muted-foreground">Fields marked are required: Name, Price, Category, Short Description</div>
-            <div className="flex items-center gap-2">
-              <Button onClick={handleCreateProduct} disabled={!isValid || saving || imagesUploading}>{saving ? "Listing…" : imagesUploading ? "Uploading…" : "Add Product"}</Button>
-            </div>
-          </div>
-
-          {statusMessage && <div className="mt-3 text-sm text-green-600">{statusMessage}</div>}
+      <form onSubmit={createListing} noValidate className="space-y-4 rounded-xl border border-border bg-white p-5">
+        <div>
+          <label htmlFor="sell-name" className="mb-1 block text-sm font-medium">
+            Product name
+          </label>
+          <input id="sell-name" value={draft.name} onChange={set("name")} maxLength={200} className={fieldClass} {...aria("name")} />
+          {fieldError("name")}
         </div>
 
-        {/* Listings & Orders */}
-        <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
-            <h3 className="text-lg font-semibold mb-3">Your Listings</h3>
-            {myProducts.length === 0 ? (
-              <div>
-                <div className="text-muted-foreground">No products listed yet.</div>
-                <div className="mt-2 text-xs text-muted-foreground">Debug: {debugLoading ? 'Checking products...' : (debugProducts === null ? 'Debug endpoint not available' : `${debugProducts.length} products found in DB for you`)}</div>
-                {debugProducts && debugProducts.length > 0 && (
-                  <div className="mt-2">
-                    <div className="text-sm font-medium mb-1">DB Products (dev)</div>
-                    <ul className="text-xs list-disc ml-5 space-y-1">
-                      {debugProducts.map((p) => (
-                        <li key={p._id}>{p.name || '— unnamed —'} ({p._id})</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-3">
-                {myProducts.map((p) => (
-                  <div key={p._id} className="flex items-center gap-3 p-3 border rounded-lg">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={p.images?.[0] || "/placeholder.png"} alt={p.name} className="w-20 h-20 object-cover rounded" />
-                    <div className="flex-1">
-                      <div className="font-medium">{p.name}</div>
-                      <div className="text-sm text-muted-foreground">{p.category?.name} • {formatCurrency(Number(p.price || 0))}</div>
-                    </div>
-                    <div className="text-sm">{p.sold ? "Sold" : p.isActive ? "Active" : "Removed"}</div>
-                  </div>
-                ))}
-              </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div>
+            <label htmlFor="sell-price" className="mb-1 block text-sm font-medium">
+              Selling price (₹)
+            </label>
+            <input
+              id="sell-price"
+              type="number"
+              inputMode="decimal"
+              min={1}
+              step="0.01"
+              value={draft.price}
+              onChange={set("price")}
+              className={fieldClass}
+              {...aria("price")}
+            />
+            {fieldError("price")}
+          </div>
+          <div>
+            <label htmlFor="sell-original" className="mb-1 block text-sm font-medium">
+              Original price <span className="font-normal text-muted-foreground">(optional)</span>
+            </label>
+            <input
+              id="sell-original"
+              type="number"
+              inputMode="decimal"
+              min={1}
+              step="0.01"
+              value={draft.originalPrice}
+              onChange={set("originalPrice")}
+              className={fieldClass}
+              {...aria("originalPrice")}
+            />
+            {fieldError("originalPrice")}
+          </div>
+          <div>
+            <label htmlFor="sell-stock" className="mb-1 block text-sm font-medium">
+              Quantity
+            </label>
+            <input
+              id="sell-stock"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={999}
+              step={1}
+              value={draft.stock}
+              onChange={set("stock")}
+              className={fieldClass}
+              {...aria("stock")}
+            />
+            {fieldError("stock")}
+          </div>
+        </div>
+        {preview && (
+          <p className="rounded-lg bg-primary/5 px-3 py-2 text-sm text-primary" aria-live="polite">
+            Buyers pay <strong>{formatCurrency(preview.price)}</strong>
+            {preview.discount > 0 && (
+              <>
+                {" "}
+                — shown as {preview.discount}% off {formatCurrency(preview.originalPrice)}
+              </>
             )}
+          </p>
+        )}
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label htmlFor="sell-category" className="mb-1 block text-sm font-medium">
+              Category
+            </label>
+            <select id="sell-category" value={draft.category} onChange={set("category")} className={fieldClass} {...aria("category")}>
+              <option value="">Choose a category</option>
+              {categories.map((c) => (
+                <option key={c._id} value={c._id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            {fieldError("category")}
           </div>
-
-              <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
-                <h3 className="text-lg font-semibold mb-3">Orders For Your Items</h3>
-                {myOrders.length === 0 ? (
-                  <div className="text-muted-foreground">No orders yet.</div>
-                ) : (
-                  <div className="space-y-3">
-                    {myOrders.map((o) => (
-                      (() => {
-                        const sellerItems = (o.items || []).filter((it: any) => {
-                          try {
-                            if (!serverUser) return false;
-                            const myId = String(serverUser._id);
-                            if (it.seller && String(it.seller) === myId) return true;
-                            if (it.sellerEmail && serverUser.email && String(it.sellerEmail).toLowerCase() === String(serverUser.email).toLowerCase()) return true;
-                            if (it.sellerMobile && serverUser.sellerProfile?.mobileNumber && String(it.sellerMobile) === String(serverUser.sellerProfile.mobileNumber)) return true;
-                            return false;
-                          } catch (e) { return false; }
-                        });
-                        if (sellerItems.length === 0) return null;
-                        const sellerTotal = sellerItems.reduce((sum: number, it: any) => sum + (Number(it.price) || 0) * (Number(it.quantity) || 0), 0);
-
-                        return (
-                          <div key={o._id} className="p-3 border rounded-lg">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <div className="font-medium">Order #{o._id.slice(-8).toUpperCase()}</div>
-                                <div className="text-sm text-muted-foreground">{new Date(o.createdAt).toLocaleString()}</div>
-                              </div>
-                              <div className="text-right">
-                                <div className="text-sm">{o.status}</div>
-                                <div className="text-sm font-semibold text-primary">{formatCurrency(sellerTotal)}</div>
-                              </div>
-                            </div>
-                            <div className="mt-2 text-sm">
-                              {sellerItems.map((it: any) => {
-                                const itemId = it._id;
-                                return (
-                                  <div key={it._id || (it.product?._id || it.product)} className="flex items-center gap-2 py-1">
-                                    <img src={it.product?.images?.[0] || "/placeholder.png"} className="w-10 h-10 object-cover rounded" />
-                                    <div className="flex-1">{it.name} × {it.quantity}
-                                      <div className="text-xs text-muted-foreground">Seller: {it.sellerName || it.sellerEmail || '—'}</div>
-                                    </div>
-                                    <div className="text-sm">{formatCurrency((Number(it.price) || 0) * (Number(it.quantity) || 0))}</div>
-                                    <div className="ml-2">
-                                      {!isSignedIn ? (
-                                        <button
-                                          onClick={() => openSignIn()}
-                                          className="ml-2 px-2 py-1 text-sm border rounded-lg bg-yellow-50"
-                                        >
-                                          Sign in to update
-                                        </button>
-                                      ) : (
-                                        <select
-                                          value={it.itemStatus || 'Pending'}
-                                          onChange={async (e) => {
-                                            const newStatus = e.target.value;
-                                            if (!itemId) return;
-                                            setUpdatingItem((s) => ({ ...s, [itemId]: true }));
-                                            try {
-                                              await orderService.updateOrderItemStatus(o._id, itemId, newStatus);
-                                            } catch (err: any) {
-                                              const statusCode = err?.response?.status;
-                                              if (statusCode === 401) {
-                                                openSignIn();
-                                              } else {
-                                                alert('Failed to update item status');
-                                              }
-                                            } finally {
-                                              setUpdatingItem((s) => ({ ...s, [itemId]: false }));
-                                              orderService.getSellerOrders({ limit: 50 }).then((r) => setMyOrders(r.data.orders)).catch(() => {});
-                                            }
-                                          }}
-                                          disabled={!!updatingItem[it._id]}
-                                          className="ml-2 px-2 py-1 text-sm border rounded-lg"
-                                        >
-                                          {['Pending','Processing','Shipped','Delivered','Cancelled'].map((s) => (
-                                            <option key={s} value={s}>{s}</option>
-                                          ))}
-                                        </select>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })()
-                    ))}
-                  </div>
-                )}
-              </div>
+          <div>
+            <label htmlFor="sell-age" className="mb-1 block text-sm font-medium">
+              How long have you used it? <span className="font-normal text-muted-foreground">(optional)</span>
+            </label>
+            <input id="sell-age" placeholder="e.g. 6 months" value={draft.productAge} onChange={set("productAge")} className={fieldClass} />
+          </div>
         </div>
-      </div>
+
+        <div>
+          <label htmlFor="sell-description" className="mb-1 block text-sm font-medium">
+            Description
+          </label>
+          <textarea
+            id="sell-description"
+            rows={3}
+            value={draft.description}
+            onChange={set("description")}
+            placeholder="Condition, what's included, why you're selling…"
+            className={fieldClass}
+            {...aria("description")}
+          />
+          {fieldError("description")}
+        </div>
+
+        <div>
+          <label htmlFor="sell-specs" className="mb-1 block text-sm font-medium">
+            Specifications <span className="font-normal text-muted-foreground">(optional)</span>
+          </label>
+          <textarea
+            id="sell-specs"
+            rows={3}
+            value={draft.specs}
+            onChange={set("specs")}
+            placeholder="Brand, model, size…"
+            className={fieldClass}
+          />
+        </div>
+
+        <fieldset className="grid gap-4 rounded-xl bg-muted/50 p-4 sm:grid-cols-3">
+          <legend className="float-left mb-1 w-full text-sm font-semibold sm:col-span-3">Pickup details for buyers</legend>
+          <div>
+            <label htmlFor="sell-mobile" className="mb-1 block text-sm font-medium">
+              Mobile
+            </label>
+            <input
+              id="sell-mobile"
+              type="tel"
+              inputMode="tel"
+              value={draft.sellerMobile}
+              onChange={set("sellerMobile")}
+              className={fieldClass}
+              {...aria("sellerMobile")}
+            />
+            {fieldError("sellerMobile")}
+          </div>
+          <div>
+            <label htmlFor="sell-hostel" className="mb-1 block text-sm font-medium">
+              Hostel
+            </label>
+            <input
+              id="sell-hostel"
+              placeholder="e.g. BH-2"
+              value={draft.sellerHostel}
+              onChange={set("sellerHostel")}
+              className={fieldClass}
+              {...aria("sellerHostel")}
+            />
+            {fieldError("sellerHostel")}
+          </div>
+          <div>
+            <label htmlFor="sell-room" className="mb-1 block text-sm font-medium">
+              Room
+            </label>
+            <input
+              id="sell-room"
+              placeholder="e.g. 101"
+              value={draft.sellerRoom}
+              onChange={set("sellerRoom")}
+              className={fieldClass}
+              {...aria("sellerRoom")}
+            />
+            {fieldError("sellerRoom")}
+          </div>
+        </fieldset>
+
+        <div>
+          <p className="mb-1 text-sm font-medium">Photos</p>
+          <p className="mb-2 text-xs text-muted-foreground">Up to 6 photos. The first one is the cover.</p>
+          <ImageUploader
+            images={draft.images}
+            onChange={(images: string[]) => setDraft((current) => ({ ...current, images }))}
+            max={6}
+            onUploadingChange={setImagesUploading}
+          />
+        </div>
+
+        <Button type="submit" size="lg" className="w-full sm:w-auto" disabled={saving || imagesUploading}>
+          {saving ? "Listing…" : imagesUploading ? "Uploading photos…" : "List product"}
+        </Button>
+      </form>
+
+      <section>
+        <h3 className="mb-3 font-semibold">Your listings</h3>
+        {listings.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+            You haven't listed anything yet.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {listings.map((listing) => {
+              const state =
+                listing.isActive === false ? "Removed" : listing.sold || listing.stock <= 0 ? "Sold out" : `${listing.stock} available`;
+              return (
+                <li key={listing._id} className="flex items-center gap-3 rounded-xl border border-border bg-white p-3">
+                  <ProductImage
+                    src={listing.images?.[0]}
+                    alt={listing.name}
+                    className="h-14 w-14 shrink-0 rounded-lg bg-muted object-contain p-0.5"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{listing.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatCurrency(listing.price)} · {state}
+                    </p>
+                  </div>
+                  {listing.isActive !== false && (
+                    <>
+                      <a
+                        href={`/products/${listing._id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`View ${listing.name} in the store`}
+                        className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${listing.name}`}
+                        disabled={removing === listing._id}
+                        onClick={() => void removeListing(listing)}
+                        className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-red-50 hover:text-destructive disabled:opacity-40"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }

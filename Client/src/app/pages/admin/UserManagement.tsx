@@ -1,8 +1,11 @@
-import { useState, useEffect } from "react";
-import { Search, Edit, Trash2, Shield } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Search, Pencil, Shield, UserRound, UserRoundX, UserRoundCheck } from "lucide-react";
 import { Button } from "../../components/Button";
 import { userService } from "../../../services/userService";
-
+import { useAuth } from "../../../context/AuthContext";
+import { toast } from "sonner";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "../../components/ui/dialog";
+import { PageHeading, ErrorNotice, EmptyState, Pagination, inputClass, panelClass, actionClass, formatDate, errorMessage } from "./AdminUI";
 interface User {
   _id: string;
   name: string;
@@ -10,172 +13,260 @@ interface User {
   role: string;
   createdAt: string;
   isActive: boolean;
+  isSeller?: boolean;
 }
-
 export default function UserManagement() {
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedRole, setSelectedRole] = useState("all");
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [role, setRole] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [error, setError] = useState("");
+  const [editing, setEditing] = useState<User | null>(null);
+  const [nextRole, setNextRole] = useState("user");
+  const [saving, setSaving] = useState<string | null>(null);
+  const [formError, setFormError] = useState("");
+  const requestId = useRef(0);
+  const load = useCallback(async () => {
+    const id = ++requestId.current;
+    setLoading(true);
+    setError("");
+    try {
+      const params = { page, limit: 20, search: search.trim() || undefined, role: role || undefined };
+      const { data } = await userService.getUsers(params);
+      if (id === requestId.current) {
+        setUsers(data.users || []);
+        setTotal(data.total ?? 0);
+      }
+    } catch (err) {
+      if (id === requestId.current) setError(errorMessage(err, "We couldn't load user accounts."));
+    } finally {
+      if (id === requestId.current) setLoading(false);
+    }
+  }, [page, search, role]);
   useEffect(() => {
-    userService.getUsers().then((res) => setUsers(res.data.users)).finally(() => setIsLoading(false));
-  }, []);
-
-  const handleDelete = async (id: string) => {
-    if (!confirm("Delete this user?")) return;
-    await userService.deleteUser(id);
-    setUsers((prev) => prev.filter((u) => u._id !== id));
+    const timer = setTimeout(() => void load(), 250);
+    return () => {
+      clearTimeout(timer);
+      requestId.current++;
+    };
+  }, [load]);
+  const changeAccess = async (user: User) => {
+    if (
+      !window.confirm(
+        `${user.isActive ? "Deactivate" : "Reactivate"} access for ${user.name || user.email}? ${user.isActive ? "Their order history will be retained." : "They will be able to use the account again."}`,
+      )
+    )
+      return;
+    setSaving(user._id);
+    try {
+      await userService.updateUser(user._id, { isActive: !user.isActive });
+      await load();
+      toast.success(user.isActive ? "Account deactivated" : "Account reactivated");
+    } catch (err) {
+      toast.error(errorMessage(err, "Account access could not be updated."));
+    } finally {
+      setSaving(null);
+    }
   };
-
-  const handleRoleChange = async (user: User, role: string) => {
-    await userService.updateUser(user._id, { role });
-    setUsers((prev) => prev.map((u) => u._id === user._id ? { ...u, role } : u));
-    setEditingUser(null);
+  const changeRole = async () => {
+    if (!editing) return;
+    setSaving(editing._id);
+    setFormError("");
+    try {
+      await userService.updateUser(editing._id, { role: nextRole });
+      setEditing(null);
+      await load();
+      toast.success("Account role updated");
+    } catch (err) {
+      setFormError(errorMessage(err, "The role could not be updated."));
+    } finally {
+      setSaving(null);
+    }
   };
-
-  const filteredUsers = users.filter((user) => {
-    const matchesSearch =
-      user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRole = selectedRole === "all" || user.role === selectedRole;
-    return matchesSearch && matchesRole;
-  });
-
+  const isSelf = (user: User) => currentUser?._id === user._id || currentUser?.email?.toLowerCase() === user.email?.toLowerCase();
+  const actions = (user: User) => (
+    <div className="flex items-center gap-1">
+      <button
+        aria-label={`Change role for ${user.name}`}
+        disabled={isSelf(user) || saving === user._id}
+        title={isSelf(user) ? "Your own administrator access cannot be changed here" : "Change role"}
+        className={actionClass}
+        onClick={() => {
+          setEditing(user);
+          setNextRole(user.role);
+          setFormError("");
+        }}
+      >
+        <Pencil className="h-4 w-4" />
+      </button>
+      <button
+        aria-label={`${user.isActive ? "Deactivate" : "Reactivate"} ${user.name}`}
+        disabled={isSelf(user) || saving === user._id}
+        className={`${actionClass} ${user.isActive ? "hover:!bg-rose-50 hover:!text-rose-600" : ""}`}
+        onClick={() => void changeAccess(user)}
+      >
+        {user.isActive ? <UserRoundX className="h-4 w-4" /> : <UserRoundCheck className="h-4 w-4" />}
+      </button>
+    </div>
+  );
+  const roleBadge = (user: User) => (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${user.role === "admin" ? "bg-teal-50 text-teal-700" : "bg-slate-100 text-slate-600"}`}
+    >
+      {user.role === "admin" ? <Shield className="h-3 w-3" /> : <UserRound className="h-3 w-3" />}
+      {user.role === "admin" ? "Administrator" : "Customer"}
+    </span>
+  );
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold mb-2">User Management</h1>
-        <p className="text-muted-foreground">Manage customer accounts and permissions</p>
-      </div>
-
-      {/* Search & Filters */}
-      <div className="bg-white rounded-xl border border-border p-4">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-            <input
-              type="search"
-              placeholder="Search users..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-muted rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
-          <select
-            value={selectedRole}
-            onChange={(e) => setSelectedRole(e.target.value)}
-            className="px-4 py-2 bg-white border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="all">All Roles</option>
-            <option value="admin">Admin</option>
-            <option value="user">User</option>
-          </select>
+      <PageHeading
+        title="Customers & team"
+        description="Manage account access and administrator permissions while keeping customer history intact."
+      />
+      <div className={`${panelClass} flex flex-col gap-3 p-4 sm:flex-row`}>
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
+          <input
+            aria-label="Search users"
+            type="search"
+            placeholder="Search by name or email"
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(1);
+            }}
+            className={`${inputClass} pl-10`}
+          />
         </div>
+        <select
+          aria-label="Filter by role"
+          value={role}
+          onChange={(event) => {
+            setRole(event.target.value);
+            setPage(1);
+          }}
+          className={`${inputClass} sm:max-w-48`}
+        >
+          <option value="">All roles</option>
+          <option value="admin">Administrators</option>
+          <option value="user">Customers</option>
+        </select>
       </div>
-
-      {/* Users Table */}
-      <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="px-6 py-4 text-left text-sm font-medium">User</th>
-                <th className="px-6 py-4 text-left text-sm font-medium">Email</th>
-                <th className="px-6 py-4 text-left text-sm font-medium">Role</th>
-                <th className="px-6 py-4 text-left text-sm font-medium">Join Date</th>
-                <th className="px-6 py-4 text-left text-sm font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {isLoading ? (
-                <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
-              ) : filteredUsers.map((user) => (
-                <tr key={user._id} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-gradient-to-br from-slate-600 to-slate-800 rounded-full flex items-center justify-center text-white font-semibold">
-                        {user.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
-                      </div>
-                      <span className="font-medium">{user.name}</span>
+      {error && <ErrorNotice message={error} retry={load} />}
+      <section className={`${panelClass} overflow-hidden`}>
+        {loading ? (
+          <EmptyState loading />
+        ) : error ? null : users.length === 0 ? (
+          <EmptyState title="No matching accounts" description="Try a different name, email address or role filter." />
+        ) : (
+          <>
+            <div className="divide-y divide-slate-100 xl:hidden">
+              {users.map((user) => (
+                <article key={user._id} className="space-y-3 p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="break-words text-sm font-semibold">
+                        {user.name || "Unnamed account"}
+                        {isSelf(user) && <span className="ml-2 text-xs font-normal text-slate-400">You</span>}
+                      </p>
+                      <p className="mt-1 break-all text-xs text-slate-500">{user.email}</p>
                     </div>
-                  </td>
-                  <td className="px-6 py-4 text-muted-foreground">{user.email}</td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${
-                        user.role === "admin"
-                          ? "bg-sky-100 text-sky-700"
-                          : "bg-blue-100 text-blue-700"
-                      }`}
-                    >
-                      {user.role === "admin" && <Shield className="w-3 h-3" />}
-                      {user.role}
+                    {actions(user)}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {roleBadge(user)}
+                    <span className={`text-xs ${user.isActive ? "text-teal-700" : "text-rose-600"}`}>
+                      {user.isActive ? "Active" : "Inactive"}
                     </span>
-                  </td>
-                  <td className="px-6 py-4 text-muted-foreground">
-                    {new Date(user.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <button
-                        className="p-2 hover:bg-accent rounded-lg transition-colors"
-                        onClick={() => setEditingUser(user)}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        className="p-2 hover:bg-destructive/10 text-destructive rounded-lg transition-colors"
-                        onClick={() => handleDelete(user._id)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                    {user.isSeller && <span className="text-xs text-slate-500">· Seller</span>}
+                  </div>
+                  <p className="text-xs text-slate-400">Joined {formatDate(user.createdAt)}</p>
+                </article>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl border border-border p-6">
-          <div className="text-3xl font-bold mb-1">{users.length}</div>
-          <div className="text-sm text-muted-foreground">Total Users</div>
-        </div>
-        <div className="bg-white rounded-xl border border-border p-6">
-          <div className="text-3xl font-bold mb-1">
-            {users.filter((u) => u.role === "admin").length}
-          </div>
-          <div className="text-sm text-muted-foreground">Administrators</div>
-        </div>
-        <div className="bg-white rounded-xl border border-border p-6">
-          <div className="text-3xl font-bold mb-1">
-            {users.filter((u) => u.isActive).length}
-          </div>
-          <div className="text-sm text-muted-foreground">Active Users</div>
-        </div>
-      </div>
-
-      {/* Edit Role Modal */}
-      {editingUser && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-sm w-full p-6 space-y-4">
-            <h2 className="text-xl font-bold">Change Role</h2>
-            <p className="text-muted-foreground">Change role for <strong>{editingUser.name}</strong></p>
-            <div className="flex gap-4">
-              <Button variant={editingUser.role === "user" ? "primary" : "outline"} className="flex-1" onClick={() => handleRoleChange(editingUser, "user")}>User</Button>
-              <Button variant={editingUser.role === "admin" ? "primary" : "outline"} className="flex-1" onClick={() => handleRoleChange(editingUser, "admin")}>Admin</Button>
             </div>
-            <Button variant="ghost" className="w-full" onClick={() => setEditingUser(null)}>Cancel</Button>
+            <div className="hidden overflow-x-auto xl:block">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-xs text-slate-500">
+                  <tr>
+                    {["Account", "Role", "Access", "Joined", "Actions"].map((heading) => (
+                      <th key={heading} className="px-5 py-4 text-left font-medium">
+                        {heading}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {users.map((user) => (
+                    <tr key={user._id} className="hover:bg-slate-50/50">
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">
+                            {(user.name || "?")
+                              .split(" ")
+                              .map((value) => value[0])
+                              .join("")
+                              .slice(0, 2)
+                              .toUpperCase()}
+                          </span>
+                          <div>
+                            <p className="font-semibold">
+                              {user.name || "Unnamed account"}
+                              {isSelf(user) && <span className="ml-2 text-xs font-normal text-slate-400">You</span>}
+                            </p>
+                            <p className="mt-1 max-w-64 truncate text-xs text-slate-500">{user.email}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4">
+                        {roleBadge(user)}
+                        {user.isSeller && <p className="mt-1 text-xs text-slate-500">Approved seller</p>}
+                      </td>
+                      <td className={`px-5 py-4 text-xs font-medium ${user.isActive ? "text-teal-700" : "text-rose-600"}`}>
+                        {user.isActive ? "Active" : "Inactive"}
+                      </td>
+                      <td className="px-5 py-4 text-xs text-slate-500">{formatDate(user.createdAt)}</td>
+                      <td className="px-5 py-4">{actions(user)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+        {!error && <Pagination page={page} total={total} onChange={setPage} loading={loading} />}
+      </section>
+      <Dialog
+        open={!!editing}
+        onOpenChange={(open) => {
+          if (!open && !saving) setEditing(null);
+        }}
+      >
+        <DialogContent className="max-h-[90dvh] overflow-y-auto rounded-2xl bg-white">
+          <DialogTitle>Change account role</DialogTitle>
+          <DialogDescription>
+            Update access for {editing?.name || editing?.email}. Administrators can manage products, orders and other users.
+          </DialogDescription>
+          {formError && <ErrorNotice message={formError} />}
+          <label htmlFor="account-role" className="text-sm font-medium">
+            Account role
+          </label>
+          <select id="account-role" value={nextRole} onChange={(event) => setNextRole(event.target.value)} className={inputClass}>
+            <option value="user">Customer</option>
+            <option value="admin">Administrator</option>
+          </select>
+          <div className="mt-2 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <Button variant="outline" disabled={!!saving} onClick={() => setEditing(null)}>
+              Cancel
+            </Button>
+            <Button disabled={!!saving || nextRole === editing?.role} onClick={() => void changeRole()}>
+              {saving ? "Saving…" : "Save role"}
+            </Button>
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
-
-

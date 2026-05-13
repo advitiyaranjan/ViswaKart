@@ -30,6 +30,9 @@ if (process.env.CLOUDINARY_URL || process.env.CLOUDINARY_CLOUD_NAME) {
   }
 }
 
+const IMAGE_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
+exports.IMAGE_TYPES = IMAGE_TYPES;
+
 // POST /api/uploads
 exports.uploadImage = async (req, res) => {
   try {
@@ -52,7 +55,9 @@ exports.uploadImage = async (req, res) => {
     // local fallback: save to server/public/uploads
     const uploadsDir = path.join(__dirname, '..', 'public', 'uploads');
     if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-    const ext = (req.file.originalname || '').split('.').pop() || 'jpg';
+    // Never trust the client's file name: an '.html' upload would be served from our origin.
+    const ext = IMAGE_TYPES[req.file.mimetype];
+    if (!ext) return res.status(400).json({ success: false, message: 'Only image uploads are allowed' });
     const filename = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}.${ext}`;
     const filePath = path.join(uploadsDir, filename);
     fs.writeFileSync(filePath, buffer);

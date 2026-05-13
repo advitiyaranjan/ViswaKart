@@ -1,378 +1,133 @@
 const Product = require("../models/Product");
 const Category = require("../models/Category");
 const User = require("../models/User");
-const { verifyToken } = require("@clerk/backend");
 const { validationResult } = require("express-validator");
+const { pagination, fail, escapeRegex, normalizePricing } = require("../utils/commerce");
 
-// @desc    Get all products (with pagination, filtering, search)
-// @route   GET /api/products
-// @access  Public
 exports.getProducts = async (req, res) => {
-  const {
-    page = 1,
-    limit = 12,
-    search,
-    category,
-    minPrice,
-    maxPrice,
-    sort,
-    featured,
-  } = req.query;
-
-  // Build base filters (search, category, price, featured) first
-  const baseFilter = {};
-
-  // Search by name
-  if (search) {
-    baseFilter.name = { $regex: search, $options: "i" };
+  const { page, limit, skip } = pagination(req.query, 12);
+  const query = {};
+  if (req.query.search) query.name = { $regex: escapeRegex(String(req.query.search).slice(0, 200)), $options: "i" };
+  if (req.query.category) {
+    const category = String(req.query.category);
+    const cat = await Category.findOne(/^[a-f\d]{24}$/i.test(category) ? { _id: category, isActive: true } : { slug: category, isActive: true });
+    if (!cat) return res.json({ success: true, total: 0, page, pages: 0, products: [] });
+    query.category = cat._id;
   }
-
-  // Filter by category slug or id
-  if (category) {
-    const cat = await Category.findOne({ slug: category });
-    if (cat) baseFilter.category = cat._id;
-    else baseFilter.category = category; // allow direct ObjectId
-  }
-
-  // Price range
-  if (minPrice || maxPrice) {
-    baseFilter.price = {};
-    if (minPrice) baseFilter.price.$gte = Number(minPrice);
-    if (maxPrice) baseFilter.price.$lte = Number(maxPrice);
-  }
-
-  // Featured filter
-  if (featured === "true") baseFilter.isFeatured = true;
-
-  const skip = (Number(page) - 1) * Number(limit);
-
-  // Support filtering by seller id, sellerEmail or sellerMobile.
-  // If the requester is the same seller (or an admin), include their inactive items too.
-  let finalQuery = {};
-  const sellerId = req.query.seller;
-  const sellerEmail = req.query.sellerEmail;
-  const sellerMobile = req.query.sellerMobile;
-
-  if (sellerId || sellerEmail || sellerMobile) {
-    console.log('[GET_PRODUCTS] seller filter used:', { sellerId, sellerEmail, sellerMobile });
-
-    const requesterIsAdmin = req.user && req.user.role === 'admin';
-    const requesterIsSellerById = req.user && (req.user.id === sellerId || req.user._id?.toString() === sellerId);
-    const requesterIsSellerByEmail = req.user && sellerEmail && ((req.user.email || '').toLowerCase() === String(sellerEmail).toLowerCase());
-    const requesterIsSellerByMobile = req.user && sellerMobile && ((req.user.sellerProfile?.mobileNumber || '') === String(sellerMobile));
-
-    if (sellerId) {
-      if (requesterIsSellerById || requesterIsAdmin) {
-        finalQuery = { ...baseFilter, seller: sellerId };
-      } else {
-        finalQuery = { ...baseFilter, seller: sellerId, isActive: true };
-      }
-    } else if (sellerEmail) {
-      const normalized = String(sellerEmail).toLowerCase();
-      if (requesterIsSellerByEmail || requesterIsAdmin) {
-        finalQuery = { ...baseFilter, sellerEmail: normalized };
-      } else {
-        finalQuery = { ...baseFilter, sellerEmail: normalized, isActive: true };
-      }
-    } else {
-      // sellerMobile
-      const normalizedMobile = String(sellerMobile || "").trim();
-      if (requesterIsSellerByMobile || requesterIsAdmin) {
-        finalQuery = { ...baseFilter, sellerMobile: normalizedMobile };
-      } else {
-        finalQuery = { ...baseFilter, sellerMobile: normalizedMobile, isActive: true };
-      }
+  for (const [key, operator] of [["minPrice", "$gte"], ["maxPrice", "$lte"]]) {
+    if (req.query[key] !== undefined && req.query[key] !== "") {
+      const value = Number(req.query[key]);
+      if (!Number.isFinite(value) || value < 0) fail("Price filters must be non-negative numbers");
+      query.price = { ...query.price, [operator]: value };
     }
-  } else {
-    // Public listing: only active products
-    finalQuery = { ...baseFilter, isActive: true };
   }
-
-  // Default sort: show user-added (seller) products first, then newest
-  const sortOrder = sort ? sort : { seller: -1, createdAt: -1 };
-
+  if (query.price?.$gte > query.price?.$lte) fail("Minimum price must not exceed maximum price");
+  if (req.query.minRating !== undefined && req.query.minRating !== "") {
+    const minRating = Number(req.query.minRating);
+    if (!Number.isFinite(minRating) || minRating < 0 || minRating > 5) fail("Minimum rating must be between 0 and 5");
+    if (minRating > 0) query.ratings = { $gte: minRating };
+  }
+  // Same availability rule checkout enforces: in stock and not marked sold.
+  if (req.query.inStock === "true") Object.assign(query, { stock: { $gt: 0 }, sold: { $ne: true } });
+  if (req.query.featured === "true") query.isFeatured = true;
+  let owner = false;
+  if (req.query.seller) {
+    if (!/^[a-f\d]{24}$/i.test(req.query.seller)) fail("Invalid seller ID");
+    query.seller = req.query.seller;
+    owner = String(req.user?.id) === req.query.seller;
+  } else if (req.query.sellerEmail) {
+    query.sellerEmail = String(req.query.sellerEmail).trim().toLowerCase();
+    owner = req.user?.email === query.sellerEmail;
+  } else if (req.query.sellerMobile) {
+    query.sellerMobile = String(req.query.sellerMobile).replace(/\D/g, "");
+    // A freely editable phone number is not proof of ownership.
+  }
+  if (!(req.user?.role === "admin" && req.query.includeInactive === "true") && !owner) query.isActive = true;
+  const allowedSorts = ["price", "-price", "name", "-name", "ratings", "-ratings", "createdAt", "-createdAt", "-numReviews"];
+  if (req.query.sort && !allowedSorts.includes(req.query.sort)) fail("Invalid product sort");
+  const sort = req.query.sort || "-createdAt";
   const [products, total] = await Promise.all([
-    Product.find(finalQuery)
-      .populate("category", "name slug")
-      .sort(sortOrder)
-      .skip(skip)
-      .limit(Number(limit))
-      .lean(),
-    Product.countDocuments(finalQuery),
+    Product.find(query).populate("category", "name slug").sort(`${sort} _id`).skip(skip).limit(limit).lean(),
+    Product.countDocuments(query),
   ]);
-
-  if (req.query.seller) console.log('[GET_PRODUCTS] returning', products.length, 'products for seller', req.query.seller);
-
-  res.status(200).json({
-    success: true,
-    total,
-    page: Number(page),
-    pages: Math.ceil(total / Number(limit)),
-    products,
-  });
+  res.json({ success: true, total, page, pages: Math.ceil(total / limit), products });
 };
 
-// @desc    Get single product by ID or slug
-// @route   GET /api/products/:id
-// @access  Public
 exports.getProduct = async (req, res) => {
-  const { id } = req.params;
-  const query = id.match(/^[0-9a-fA-F]{24}$/)
-    ? { _id: id }
-    : { slug: id };
-
-  const product = await Product.findOne({ ...query, isActive: true }).populate(
-    "category",
-    "name slug"
-  );
-
-  if (!product) {
-    return res.status(404).json({ success: false, message: "Product not found" });
-  }
-
-  res.status(200).json({ success: true, product });
+  const query = /^[a-f\d]{24}$/i.test(req.params.id) ? { _id: req.params.id } : { slug: req.params.id };
+  const product = await Product.findOne({ ...query, isActive: true }).populate("category", "name slug");
+  if (!product) fail("Product not found", 404);
+  res.json({ success: true, product });
 };
 
-// @desc    Create product
-// @route   POST /api/products
-// @access  Admin
+function productFields(body, user, current = {}) {
+  const allowed = ["name", "description", "category", "images", "stock", "specifications", "productAge", "sellerMobile", "sellerHostelNumber", "sellerRoomNumber"];
+  if (user.role === "admin") allowed.push("isFeatured", "isActive");
+  const payload = Object.fromEntries(allowed.filter((key) => body[key] !== undefined).map((key) => [key, body[key]]));
+  if (payload.stock !== undefined && (!Number.isSafeInteger(Number(payload.stock)) || Number(payload.stock) < 0)) fail("Stock must be a non-negative whole number");
+  if (payload.images !== undefined && (!Array.isArray(payload.images) || payload.images.length > 12 || payload.images.some((url) => typeof url !== "string" || !/^(https?:\/\/|\/uploads\/)/.test(url)))) fail("Images must contain valid image URLs");
+  Object.assign(payload, normalizePricing(body, current));
+  const profile = body.sellerProfile || {};
+  for (const [field, source] of [["sellerMobile", "mobileNumber"], ["sellerHostelNumber", "hostelNumber"], ["sellerRoomNumber", "roomNumber"]]) {
+    // The editor's own profile only fills gaps on a new listing; editing never copies an admin's details onto a seller's product.
+    const value = body[field] ?? profile[source] ?? current[field] ?? (current._id ? undefined : user.sellerProfile?.[source]);
+    if (value !== undefined) payload[field] = String(value).trim();
+  }
+  if (payload.sellerMobile) payload.sellerMobile = payload.sellerMobile.replace(/\D/g, "");
+  if (payload.stock !== undefined) payload.sold = Number(payload.stock) === 0;
+  return payload;
+}
+
+async function checkCategory(id) {
+  if (!/^[a-f\d]{24}$/i.test(String(id)) || !await Category.exists({ _id: id, isActive: true })) fail("Select an active category");
+}
+
 exports.createProduct = async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    console.warn('[CREATE_PRODUCT] validation failed', { errors: errors.array(), body: req.body, user: req.user?._id });
-    return res.status(400).json({ success: false, errors: errors.array() });
-  }
-
-  // Permission: Admins or approved sellers
-  if (!req.user) return res.status(401).json({ success: false, message: "Not authenticated" });
+  if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array(), message: errors.array()[0].msg });
+  const eligible = req.user.isVerified && req.user.email?.toLowerCase().endsWith("@iiitm.ac.in");
+  if (req.user.role !== "admin" && !(req.user.isSeller && req.user.sellerApproved) && !eligible) fail("Seller approval is required to list products", 403);
+  const payload = productFields(req.body, req.user);
+  await checkCategory(payload.category);
   if (req.user.role !== "admin") {
-    // Allow if user is an approved seller
-    let allowed = false;
-    if (req.user.isSeller && req.user.sellerApproved) allowed = true;
-    // Also allow users from the IIITM domain to list immediately (UI already exposes seller flow for this domain)
-    const email = (req.user.email || "").toLowerCase();
-    if (!allowed && email.endsWith("@iiitm.ac.in")) {
-      allowed = true;
-      // Persist seller flag so future requests recognize them
-      try {
-        await User.findByIdAndUpdate(req.user.id, { isSeller: true, sellerApproved: true, sellerApprovedAt: new Date() });
-      } catch (e) {
-        console.warn('[CREATE_PRODUCT] failed to update user seller flags', e.message || e);
-      }
-    }
-
-    if (!allowed) {
-      return res.status(403).json({ success: false, message: "Not authorized to create products" });
-    }
+    payload.seller = req.user.id;
+    payload.sellerEmail = req.user.email;
+    // This profile belongs to the authenticated seller; caller-supplied ownership is ignored.
+    await User.findByIdAndUpdate(req.user.id, { isSeller: true, sellerApproved: true, sellerApprovedAt: req.user.sellerApprovedAt || new Date(), sellerProfile: { ...req.user.sellerProfile?.toObject?.(), name: req.user.name, mobileNumber: payload.sellerMobile, hostelNumber: payload.sellerHostelNumber, roomNumber: payload.sellerRoomNumber } }, { runValidators: true });
   }
-
-  const payload = { ...req.body };
-  console.log('[CREATE_PRODUCT] incoming', { user: req.user?._id || req.user?.clerkId, payloadSample: { name: payload.name, price: payload.price, category: payload.category, imagesCount: Array.isArray(payload.images) ? payload.images.length : 0 } });
-  if (req.user.role !== "admin") payload.seller = req.user.id;
-
-  // Snapshot seller contact details on the product for easy lookup
-  try {
-    if (req.user) {
-      if (!payload.sellerEmail && req.user.email) payload.sellerEmail = String(req.user.email).toLowerCase();
-      // Prefer explicit seller fields in the request (payload.sellerMobile or payload.sellerProfile),
-      // otherwise fall back to server-side user profile if available. Always normalize/trim.
-      const mobileFromPayloadProfile = payload.sellerProfile && payload.sellerProfile.mobileNumber ? String(payload.sellerProfile.mobileNumber).trim() : "";
-      const mobileFromUserProfile = req.user && req.user.sellerProfile && req.user.sellerProfile.mobileNumber ? String(req.user.sellerProfile.mobileNumber).trim() : "";
-      const rawMobile = (!payload.sellerMobile ? (mobileFromPayloadProfile || mobileFromUserProfile || "") : String(payload.sellerMobile).trim());
-      // Keep only digits to avoid accidental formatting issues; preserve full sequence of digits
-      payload.sellerMobile = String(rawMobile).replace(/\D/g, "");
-
-      const hostelFromPayload = payload.sellerProfile && payload.sellerProfile.hostelNumber ? String(payload.sellerProfile.hostelNumber).trim() : "";
-      const hostelFromUserProfile = req.user && req.user.sellerProfile && req.user.sellerProfile.hostelNumber ? String(req.user.sellerProfile.hostelNumber).trim() : "";
-      if (!payload.sellerHostelNumber) payload.sellerHostelNumber = hostelFromPayload || hostelFromUserProfile || "";
-      else payload.sellerHostelNumber = String(payload.sellerHostelNumber).trim();
-
-      const roomFromPayload = payload.sellerProfile && payload.sellerProfile.roomNumber ? String(payload.sellerProfile.roomNumber).trim() : "";
-      const roomFromUserProfile = req.user && req.user.sellerProfile && req.user.sellerProfile.roomNumber ? String(req.user.sellerProfile.roomNumber).trim() : "";
-      if (!payload.sellerRoomNumber) payload.sellerRoomNumber = roomFromPayload || roomFromUserProfile || "";
-      else payload.sellerRoomNumber = String(payload.sellerRoomNumber).trim();
-    }
-  } catch (e) {
-    // non-fatal
-  }
-
-  try { console.log('[CREATE_PRODUCT] sellerMobile snapshot:', payload.sellerMobile); } catch(e) {}
-
-  // Save seller profile on the user record if provided
-  if (payload.sellerProfile && req.user.role !== "admin") {
-    try {
-      // sanitize any sellerProfile fields before persisting to user record
-      try {
-        if (payload.sellerProfile.mobileNumber) payload.sellerProfile.mobileNumber = String(payload.sellerProfile.mobileNumber).trim().replace(/\D/g, "");
-        if (payload.sellerProfile.hostelNumber) payload.sellerProfile.hostelNumber = String(payload.sellerProfile.hostelNumber).trim();
-        if (payload.sellerProfile.roomNumber) payload.sellerProfile.roomNumber = String(payload.sellerProfile.roomNumber).trim();
-      } catch (e) {}
-      const updated = await User.findByIdAndUpdate(req.user.id, { sellerProfile: payload.sellerProfile }, { new: true });
-      try { console.log('[CREATE_PRODUCT] updated user sellerProfile.mobileNumber after save:', updated?.sellerProfile?.mobileNumber); } catch (e) {}
-    } catch (err) {
-      // non-fatal
-    }
-  }
-
-  // Normalize discount and price semantics.
-  // For non-admin creators (sellers), treat the supplied `price` as the product's MRP (originalPrice)
-  // and compute the stored `price` as the discounted selling price (if a discount percent is provided).
-  try {
-    let discountPct = 0;
-    if (payload.discount !== undefined && payload.discount !== null) {
-      discountPct = Number(payload.discount) || 0;
-      if (!Number.isFinite(discountPct)) discountPct = 0;
-      discountPct = Math.max(0, Math.min(100, discountPct));
-      payload.discount = discountPct;
-    } else {
-      payload.discount = 0;
-    }
-
-    const inputPrice = payload.price !== undefined ? Number(payload.price) : undefined;
-    if (req.user && req.user.role !== 'admin') {
-      if (inputPrice !== undefined && !Number.isNaN(inputPrice)) {
-        payload.originalPrice = inputPrice;
-        payload.price = discountPct > 0 ? parseFloat((inputPrice * (1 - discountPct / 100)).toFixed(2)) : inputPrice;
-      } else {
-        // ensure originalPrice exists
-        if (payload.originalPrice === undefined && payload.price !== undefined) payload.originalPrice = Number(payload.price);
-      }
-    } else {
-      // Admin-created products: ensure originalPrice is set if missing
-      if (payload.originalPrice === undefined && payload.price !== undefined) payload.originalPrice = Number(payload.price);
-      // If admin provided both originalPrice and discount but left price unchanged, compute final price for consistency
-      if (payload.originalPrice !== undefined && payload.discount > 0 && (req.body.price === undefined)) {
-        const op = Number(payload.originalPrice || 0);
-        payload.price = parseFloat((op * (1 - payload.discount / 100)).toFixed(2));
-      }
-    }
-  } catch (e) {
-    // non-fatal: fall back to raw payload values
-  }
-
   const product = await Product.create(payload);
-  console.log('[CREATE_PRODUCT] created product', { id: product._id, seller: product.seller, isActive: product.isActive });
   await product.populate("category", "name slug");
   res.status(201).json({ success: true, product });
 };
 
-// @desc    Update product
-// @route   PUT /api/products/:id
-// @access  Admin
 exports.updateProduct = async (req, res) => {
   const product = await Product.findById(req.params.id);
-  if (!product) return res.status(404).json({ success: false, message: "Product not found" });
-
-  // Only admin or owning seller can update
-  if (req.user.role !== "admin" && product.seller?.toString() !== req.user.id) {
-    return res.status(403).json({ success: false, message: "Not authorized to update this product" });
-  }
-
-  Object.assign(product, req.body);
-  // If update payload included sellerProfile, ensure top-level seller contact snapshot fields are kept in sync
-  try {
-    if (req.body && req.body.sellerProfile) {
-      const sp = req.body.sellerProfile;
-      if (sp.mobileNumber) product.sellerMobile = String(sp.mobileNumber).trim().replace(/\D/g, "");
-      if (sp.hostelNumber) product.sellerHostelNumber = String(sp.hostelNumber).trim();
-      if (sp.roomNumber) product.sellerRoomNumber = String(sp.roomNumber).trim();
-    }
-    if (req.body && req.body.sellerMobile) product.sellerMobile = String(req.body.sellerMobile).trim().replace(/\D/g, "");
-    if (req.body && req.body.sellerHostelNumber) product.sellerHostelNumber = String(req.body.sellerHostelNumber).trim();
-    if (req.body && req.body.sellerRoomNumber) product.sellerRoomNumber = String(req.body.sellerRoomNumber).trim();
-  } catch (e) {
-    // non-fatal
-  }
-
-  // Normalize discount and price semantics after applying updates.
-  try {
-    let discountPct = Number(product.discount || 0);
-    if (!Number.isFinite(discountPct)) discountPct = 0;
-    discountPct = Math.max(0, Math.min(100, discountPct));
-    product.discount = discountPct;
-
-    if (req.user && req.user.role !== 'admin') {
-      // Sellers: treat the supplied `price` as MRP (originalPrice)
-      if (req.body.price !== undefined) {
-        const inputPrice = Number(req.body.price);
-        if (!Number.isNaN(inputPrice)) product.originalPrice = inputPrice;
-      }
-      if (!product.originalPrice) product.originalPrice = Number(product.price || 0);
-      if (product.originalPrice) {
-        product.price = parseFloat((Number(product.originalPrice) * (1 - discountPct / 100)).toFixed(2));
-      }
-    } else {
-      // Admin: prefer explicit originalPrice; if present recompute final price
-      if (product.originalPrice) {
-        product.price = parseFloat((Number(product.originalPrice) * (1 - discountPct / 100)).toFixed(2));
-      } else if (req.body.originalPrice !== undefined && req.body.discount !== undefined) {
-        const op = Number(product.originalPrice || 0);
-        product.price = parseFloat((op * (1 - discountPct / 100)).toFixed(2));
-      } else if (req.body.price !== undefined && !product.originalPrice) {
-        product.originalPrice = Number(product.price || 0);
-      }
-    }
-  } catch (e) {
-    // non-fatal
-  }
-
+  if (!product) fail("Product not found", 404);
+  if (req.user.role !== "admin" && String(product.seller) !== String(req.user.id)) fail("Not authorized to update this product", 403);
+  const payload = productFields(req.body, req.user, product);
+  if (payload.category !== undefined) await checkCategory(payload.category);
+  Object.assign(product, payload);
   await product.save();
   await product.populate("category", "name slug");
-  res.status(200).json({ success: true, product });
+  res.json({ success: true, product });
 };
 
-// @desc    Delete product (soft delete)
-// @route   DELETE /api/products/:id
-// @access  Admin
 exports.deleteProduct = async (req, res) => {
   const product = await Product.findById(req.params.id);
-  if (!product) return res.status(404).json({ success: false, message: "Product not found" });
-
-  // Log who requested deletion for audit
-  console.log('[DELETE_PRODUCT] requested by', req.user?.id || req.user?._id, 'role=', req.user?.role, 'for', req.params.id);
-
-  // Only admin or owning seller can delete
-  if (req.user.role !== "admin" && product.seller?.toString() !== req.user.id) {
-    console.log('[DELETE_PRODUCT] unauthorized attempt by', req.user?.id || req.user?._id);
-    return res.status(403).json({ success: false, message: "Not authorized to delete this product" });
-  }
-
+  if (!product) fail("Product not found", 404);
+  if (req.user.role !== "admin" && String(product.seller) !== String(req.user.id)) fail("Not authorized to delete this product", 403);
   product.isActive = false;
   await product.save();
-  console.log('[DELETE_PRODUCT] completed for', req.params.id, 'by', req.user?.id || req.user?._id);
-  res.status(200).json({ success: true, message: "Product deleted" });
+  res.json({ success: true, message: "Product deleted" });
 };
 
-// @desc    Add product review
-// @route   POST /api/products/:id/reviews
-// @access  Private
 exports.addReview = async (req, res) => {
-  const { rating, comment } = req.body;
-  const product = await Product.findById(req.params.id);
-
-  if (!product) {
-    return res.status(404).json({ success: false, message: "Product not found" });
-  }
-
-  // Prevent duplicate review from same user
-  const alreadyReviewed = product.reviews.find(
-    (r) => r.user.toString() === req.user.id.toString()
-  );
-  if (alreadyReviewed) {
-    return res
-      .status(400)
-      .json({ success: false, message: "You already reviewed this product" });
-  }
-
-  product.reviews.push({
-    user: req.user.id,
-    name: req.user.name,
-    rating: Number(rating),
-    comment,
-  });
-
-  product.calcAverageRatings();
-  await product.save();
-
+  const rating = Number(req.body.rating);
+  const comment = typeof req.body.comment === "string" ? req.body.comment.trim() : "";
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5 || !comment || comment.length > 2000) fail("Provide a rating from 1 to 5 and a review of up to 2000 characters");
+  // Atomic predicate prevents concurrent submissions from duplicating a user's review.
+  const product = await Product.findOneAndUpdate({ _id: req.params.id, isActive: true, "reviews.user": { $ne: req.user._id } }, { $push: { reviews: { user: req.user.id, name: req.user.name, rating, comment } } }, { new: true, runValidators: true });
+  if (!product) fail("Product unavailable or already reviewed", 409);
+  await Product.updateOne({ _id: product._id }, [{ $set: { numReviews: { $size: "$reviews" }, ratings: { $round: [{ $avg: "$reviews.rating" }, 1] } } }]);
   res.status(201).json({ success: true, message: "Review added" });
 };

@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const {
   createOrder,
+  quoteOrder,
   getMyOrders,
   getOrder,
   getAllOrders,
@@ -12,6 +13,7 @@ const {
 } = require("../controllers/orderController");
 const { protect, authorize } = require("../middleware/authMiddleware");
 
+router.post("/quote", protect, quoteOrder);
 router.post("/", protect, createOrder);
 router.get("/my", protect, getMyOrders);
 router.get("/seller/my", protect, getSellerOrders);

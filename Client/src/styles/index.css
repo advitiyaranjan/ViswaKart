@@ -1,10 +1,119 @@
-@import './fonts.css';
-@import './tailwind.css';
-@import './theme.css';
+@import "./fonts.css";
+@import "./tailwind.css";
+@import "./theme.css";
 
 /* Hide Clerk development mode badge */
-[data-localization-key="badge__dev"] { display: none !important; }
-.cl-internal-b3fm6y { display: none !important; }
-.cl-userButtonPopoverFooter { display: none !important; }
-.cl-footer { display: none !important; }
-.cl-userProfile-root .cl-footer { display: none !important; }
+[data-localization-key="badge__dev"] {
+  display: none !important;
+}
+.cl-internal-b3fm6y {
+  display: none !important;
+}
+.cl-userButtonPopoverFooter {
+  display: none !important;
+}
+.cl-footer {
+  display: none !important;
+}
+.cl-userProfile-root .cl-footer {
+  display: none !important;
+}
+
+/* ─── Mobile & cross-browser basics ─────────────────────────────────────────── */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-padding-top: 9rem; /* keep anchored content clear of the sticky header */
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+a,
+button,
+[role="button"],
+label,
+summary {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* iOS Safari zooms into inputs smaller than 16px; keep form fields at 16px on touch devices. */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: max(16px, 1em) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ─── Storefront components ─────────────────────────────────────────────────── */
+@layer components {
+  .skip-link {
+    @apply sr-only;
+  }
+  .skip-link:focus {
+    @apply not-sr-only fixed left-4 top-4 z-[100] rounded-xl bg-white px-4 py-3 text-sm font-semibold text-primary shadow-lg ring-2 ring-primary;
+  }
+
+  .header-action {
+    @apply relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-foreground transition-colors hover:bg-muted hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+  }
+
+  .cart-badge {
+    @apply pointer-events-none absolute right-0.5 top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white;
+  }
+
+  .category-nav {
+    @apply inline-flex min-h-11 shrink-0 items-center whitespace-nowrap border-b-2 border-transparent px-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground;
+  }
+  .category-nav.active {
+    @apply border-primary font-semibold text-primary;
+  }
+
+  .mobile-nav-link {
+    @apply flex min-h-12 items-center justify-between gap-3 rounded-xl px-3 text-base font-medium text-foreground transition-colors hover:bg-muted;
+  }
+
+  .product-card {
+    @apply transition-[box-shadow,border-color,transform] duration-200;
+  }
+  @media (hover: hover) {
+    .product-card:hover {
+      @apply border-primary/25 shadow-[0_12px_32px_-16px_rgba(15,60,50,0.28)];
+    }
+  }
+
+  .store-hero {
+    background-image:
+      radial-gradient(circle at 85% 15%, rgba(255, 255, 255, 0.75), transparent 45%),
+      radial-gradient(circle at 10% 90%, rgba(15, 118, 110, 0.12), transparent 40%);
+  }
+
+  .scrollbar-hide {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Fixed bottom bars sit above the iPhone home indicator. */
+  .safe-bottom {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+}

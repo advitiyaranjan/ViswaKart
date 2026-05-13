@@ -7,11 +7,12 @@ const orderItemSchema = new mongoose.Schema({
     required: true,
   },
   name: { type: String, required: true },
-  image: { type: String, required: true },
-  price: { type: Number, required: true },
+  image: { type: String, default: "" },
+  price: { type: Number, required: true, min: 0 },
   originalPrice: { type: Number, default: 0 },
   discount: { type: Number, default: 0 },
-  quantity: { type: Number, required: true, min: 1 },
+  quantity: { type: Number, required: true, min: 1, validate: Number.isSafeInteger },
+  inventoryReserved: { type: Boolean, default: false },
   // Seller snapshot for this item
   seller: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   sellerName: { type: String, default: "" },
@@ -47,6 +48,9 @@ const orderSchema = new mongoose.Schema(
       enum: ["card", "paypal", "cod"],
       default: "cod",
     },
+    shippingMethod: { type: String, enum: ["standard", "express", "overnight"], default: "standard" },
+    // Idempotency key sent by checkout so a retried submission never creates a second order
+    clientRequestId: { type: String },
     paymentResult: {
       id: String,
       status: String,
@@ -70,4 +74,7 @@ const orderSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+orderSchema.index({ "paymentResult.id": 1 }, { unique: true, partialFilterExpression: { "paymentResult.id": { $type: "string" } } });
+orderSchema.index({ user: 1, createdAt: -1 });
+orderSchema.index({ user: 1, clientRequestId: 1 }, { unique: true, partialFilterExpression: { clientRequestId: { $type: "string" } } });
 module.exports = mongoose.model("Order", orderSchema);

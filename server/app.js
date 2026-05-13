@@ -87,9 +87,9 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/orders", orderRoutes);
 
-// Log incoming user-related API requests for debugging missing routes
+// Log incoming user-related API requests for debugging missing routes (development only)
 app.use((req, res, next) => {
-  if (req.originalUrl && req.originalUrl.startsWith("/api/users")) {
+  if (isDev && req.originalUrl && req.originalUrl.startsWith("/api/users")) {
     console.log("[REQ_LOG]", req.method, req.originalUrl, "Auth:", !!req.headers.authorization);
   }
   next();

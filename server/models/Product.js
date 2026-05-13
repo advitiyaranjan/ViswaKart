@@ -29,7 +29,7 @@ const productSchema = new mongoose.Schema(
       required: [true, "Product price is required"],
       min: [0, "Price cannot be negative"],
     },
-    originalPrice: { type: Number },
+    originalPrice: { type: Number, min: 0 },
     category: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Category",
@@ -41,6 +41,7 @@ const productSchema = new mongoose.Schema(
       required: [true, "Stock quantity is required"],
       min: [0, "Stock cannot be negative"],
       default: 0,
+      validate: { validator: Number.isSafeInteger, message: "Stock must be a whole number" },
     },
     // Seller / marketplace fields
     seller: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
@@ -52,7 +53,7 @@ const productSchema = new mongoose.Schema(
     sellerRoomNumber: { type: String, default: "", index: true, sparse: true },
     specifications: { type: mongoose.Schema.Types.Mixed },
     productAge: { type: String, default: "" },
-    discount: { type: Number, default: 0 },
+    discount: { type: Number, default: 0, min: 0, max: 100 },
     sold: { type: Boolean, default: false },
     ratings: { type: Number, default: 0 },
     numReviews: { type: Number, default: 0 },
@@ -66,7 +67,7 @@ const productSchema = new mongoose.Schema(
 // Auto-generate slug from name
 productSchema.pre("save", function (next) {
   if (this.isModified("name")) {
-    this.slug = slugify(this.name, { lower: true, strict: true });
+    this.slug = `${slugify(this.name, { lower: true, strict: true })}-${this._id.toString().slice(-8)}`;
   }
   next();
 });
@@ -112,7 +113,7 @@ productSchema.methods.calcAverageRatings = function () {
 
 // Virtual: inStock flag
 productSchema.virtual("inStock").get(function () {
-  return this.stock > 0;
+  return this.stock > 0 && this.isActive && !this.sold;
 });
 
 module.exports = mongoose.model("Product", productSchema);

@@ -1,6 +1,5 @@
 import { createBrowserRouter } from "react-router";
 import UserLayout from "./layouts/UserLayout";
-import AdminLayout from "./layouts/AdminLayout";
 import Homepage from "./pages/Homepage";
 import ProductListing from "./pages/ProductListing";
 import ProductDetail from "./pages/ProductDetail";
@@ -11,17 +10,15 @@ import Signup from "./pages/Signup";
 import GoogleCallback from "./pages/GoogleCallback";
 import Checkout from "./pages/Checkout";
 import BuyNow from "./pages/BuyNow";
-import AdminDashboard from "./pages/admin/Dashboard";
-import ProductManagement from "./pages/admin/ProductManagement";
-import CategoryManagement from "./pages/admin/CategoryManagement";
-import OrderManagement from "./pages/admin/OrderManagement";
-import UserManagement from "./pages/admin/UserManagement";
-import SupportMessages from "./pages/admin/SupportMessages";
-import SellerRequests from "./pages/admin/SellerRequests";
 import NotFound from "./pages/NotFound";
 import Wishlist from "./pages/Wishlist";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ErrorBoundary from "./components/ErrorBoundary";
+import Account from "./pages/Account";
+
+// The admin area (and its charting library) is loaded only when an admin opens it,
+// keeping the storefront bundle small for shoppers on phones.
+const lazyPage = (load: () => Promise<{ default: React.ComponentType }>) => async () => ({ Component: (await load()).default });
 
 export const router = createBrowserRouter([
   {
@@ -44,26 +41,27 @@ export const router = createBrowserRouter([
         children: [
           { path: "checkout", Component: Checkout },
           { path: "buy-now", Component: BuyNow },
+          { path: "account", Component: Account },
         ],
       },
     ],
   },
   {
+    // The admin check wraps the layout so non-admins never see the admin shell.
     path: "/admin",
-    Component: AdminLayout,
+    Component: () => <ProtectedRoute adminOnly />,
     errorElement: <ErrorBoundary />,
     children: [
-      // All admin routes require authentication + admin role
       {
-        Component: () => <ProtectedRoute adminOnly />,
+        lazy: lazyPage(() => import("./layouts/AdminLayout")),
         children: [
-          { index: true, Component: AdminDashboard },
-          { path: "products", Component: ProductManagement },
-          { path: "categories", Component: CategoryManagement },
-          { path: "orders", Component: OrderManagement },
-              { path: "users", Component: UserManagement },
-              { path: "seller-requests", Component: SellerRequests },
-          { path: "support", Component: SupportMessages },
+          { index: true, lazy: lazyPage(() => import("./pages/admin/Dashboard")) },
+          { path: "products", lazy: lazyPage(() => import("./pages/admin/ProductManagement")) },
+          { path: "categories", lazy: lazyPage(() => import("./pages/admin/CategoryManagement")) },
+          { path: "orders", lazy: lazyPage(() => import("./pages/admin/OrderManagement")) },
+          { path: "users", lazy: lazyPage(() => import("./pages/admin/UserManagement")) },
+          { path: "seller-requests", lazy: lazyPage(() => import("./pages/admin/SellerRequests")) },
+          { path: "support", lazy: lazyPage(() => import("./pages/admin/SupportMessages")) },
         ],
       },
     ],

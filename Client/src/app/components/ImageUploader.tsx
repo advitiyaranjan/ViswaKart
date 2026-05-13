@@ -19,6 +19,7 @@ type UploadItem = {
 };
 
 const genId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const SERVER_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
 async function resizeFile(file: File, maxWidth = 1600, maxHeight = 1600, quality = 0.8): Promise<File> {
   if (!file.type.startsWith("image/")) return file;
@@ -28,13 +29,15 @@ async function resizeFile(file: File, maxWidth = 1600, maxHeight = 1600, quality
       let width = img.width;
       let height = img.height;
       const ratio = Math.min(maxWidth / width, maxHeight / height);
-      if (ratio >= 1) {
+      // The server accepts JPEG, PNG, WebP and GIF; anything else (e.g. HEIC) is re-encoded as JPEG.
+      const supported = SERVER_IMAGE_TYPES.includes(file.type);
+      if (ratio >= 1 && supported) {
         URL.revokeObjectURL(img.src);
         resolve(file);
         return;
       }
-      const newWidth = Math.round(width * ratio);
-      const newHeight = Math.round(height * ratio);
+      const newWidth = Math.round(width * Math.min(ratio, 1));
+      const newHeight = Math.round(height * Math.min(ratio, 1));
       const canvas = document.createElement("canvas");
       canvas.width = newWidth;
       canvas.height = newHeight;
@@ -56,8 +59,8 @@ async function resizeFile(file: File, maxWidth = 1600, maxHeight = 1600, quality
           URL.revokeObjectURL(img.src);
           resolve(newFile);
         },
-        file.type,
-        quality
+        supported ? file.type : "image/jpeg",
+        quality,
       );
     };
     img.onerror = (e) => {
@@ -74,7 +77,9 @@ export default function ImageUploader({ images, onChange, max = 6, onUploadingCh
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const imagesRef = useRef<string[]>(images);
 
-  useEffect(() => { imagesRef.current = images; }, [images]);
+  useEffect(() => {
+    imagesRef.current = images;
+  }, [images]);
 
   useEffect(() => {
     const isUploading = uploads.some((u) => u.status === "uploading");
@@ -95,26 +100,32 @@ export default function ImageUploader({ images, onChange, max = 6, onUploadingCh
   // component is mounted.
   useEffect(() => {
     const prevent = (e: Event) => {
-      try { e.preventDefault(); } catch (err) {}
-      try { (e as any).stopPropagation && (e as any).stopPropagation(); } catch (err) {}
+      try {
+        e.preventDefault();
+      } catch (err) {}
+      try {
+        (e as any).stopPropagation && (e as any).stopPropagation();
+      } catch (err) {}
     };
-    window.addEventListener('dragover', prevent as any);
-    window.addEventListener('drop', prevent as any);
+    window.addEventListener("dragover", prevent as any);
+    window.addEventListener("drop", prevent as any);
     return () => {
-      window.removeEventListener('dragover', prevent as any);
-      window.removeEventListener('drop', prevent as any);
+      window.removeEventListener("dragover", prevent as any);
+      window.removeEventListener("drop", prevent as any);
     };
   }, []);
 
   const handleOpen = () => inputRef.current?.click();
 
   const addUploadItem = (item: UploadItem) => setUploads((prev) => [...prev, item]);
-  const updateUpload = (id: string, patch: Partial<UploadItem>) => setUploads((prev) => prev.map((u) => (u.id === id ? { ...u, ...patch } : u)));
-  const removeUploadItem = (id: string) => setUploads((prev) => {
-    const toRemove = prev.find((u) => u.id === id);
-    if (toRemove && toRemove.preview && toRemove.preview.startsWith("blob:")) URL.revokeObjectURL(toRemove.preview);
-    return prev.filter((u) => u.id !== id);
-  });
+  const updateUpload = (id: string, patch: Partial<UploadItem>) =>
+    setUploads((prev) => prev.map((u) => (u.id === id ? { ...u, ...patch } : u)));
+  const removeUploadItem = (id: string) =>
+    setUploads((prev) => {
+      const toRemove = prev.find((u) => u.id === id);
+      if (toRemove && toRemove.preview && toRemove.preview.startsWith("blob:")) URL.revokeObjectURL(toRemove.preview);
+      return prev.filter((u) => u.id !== id);
+    });
 
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -166,8 +177,16 @@ export default function ImageUploader({ images, onChange, max = 6, onUploadingCh
     handleFiles(e.dataTransfer.files);
   };
 
-  const onDragOver = (e: DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); };
-  const onDragLeave = (e: DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); };
+  const onDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(true);
+  };
+  const onDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+  };
 
   const handleRemove = (srcOrId: string) => {
     if (images.includes(srcOrId)) {
@@ -187,24 +206,25 @@ export default function ImageUploader({ images, onChange, max = 6, onUploadingCh
         onDrop={onDrop}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
-        onClick={(e) => { e.stopPropagation(); handleOpen(); }}
-        onMouseDown={(e) => { e.stopPropagation(); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          handleOpen();
+        }}
+        onMouseDown={(e) => {
+          e.stopPropagation();
+        }}
         className={
           "w-full rounded-lg border border-dashed p-6 text-center cursor-pointer transition-colors " +
           (dragActive ? "border-primary bg-primary/5" : "border-border bg-transparent")
         }
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' || e.key === ' ') handleOpen(); }}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === "Enter" || e.key === " ") handleOpen();
+        }}
       >
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={onInputChange}
-          className="hidden"
-        />
+        <input ref={inputRef} type="file" accept="image/*" multiple onChange={onInputChange} className="hidden" />
         <div className="flex items-center justify-center gap-3">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 12v9M12 3v6" />
@@ -217,21 +237,26 @@ export default function ImageUploader({ images, onChange, max = 6, onUploadingCh
       </div>
 
       <div className="mt-3 flex items-center gap-2 overflow-x-auto">
-        {images.length === 0 && uploads.length === 0 && (
-          <div className="text-sm text-muted-foreground">No images uploaded yet.</div>
-        )}
+        {images.length === 0 && uploads.length === 0 && <div className="text-sm text-muted-foreground">No images uploaded yet.</div>}
 
         {images.map((src, i) => (
           <div key={src} className="relative w-28 h-28 flex-shrink-0">
             <img src={src} alt={`img-${i}`} className="w-28 h-28 object-cover rounded-lg border" />
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); handleRemove(src); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRemove(src);
+              }}
               className="absolute -top-2 -right-2 bg-white rounded-full p-1 shadow border"
               aria-label={`Remove image ${i + 1}`}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-600" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M6.28 5.22a.75.75 0 011.06 0L10 7.94l2.66-2.72a.75.75 0 011.06 1.06L11.06 9l2.72 2.66a.75.75 0 11-1.06 1.06L10 10.06l-2.66 2.72a.75.75 0 11-1.06-1.06L8.94 9 6.22 6.34a.75.75 0 010-1.12z" clipRule="evenodd" />
+                <path
+                  fillRule="evenodd"
+                  d="M6.28 5.22a.75.75 0 011.06 0L10 7.94l2.66-2.72a.75.75 0 011.06 1.06L11.06 9l2.72 2.66a.75.75 0 11-1.06 1.06L10 10.06l-2.66 2.72a.75.75 0 11-1.06-1.06L8.94 9 6.22 6.34a.75.75 0 010-1.12z"
+                  clipRule="evenodd"
+                />
               </svg>
             </button>
           </div>
@@ -239,19 +264,26 @@ export default function ImageUploader({ images, onChange, max = 6, onUploadingCh
 
         {uploads.map((u) => (
           <div key={u.id} className="relative w-28 h-28 flex-shrink-0">
-            <img src={u.preview} alt={u.name || 'upload'} className="w-28 h-28 object-cover rounded-lg border opacity-90" />
+            <img src={u.preview} alt={u.name || "upload"} className="w-28 h-28 object-cover rounded-lg border opacity-90" />
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); handleRemove(u.id); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRemove(u.id);
+              }}
               className="absolute -top-2 -right-2 bg-white rounded-full p-1 shadow border"
               aria-label={`Remove upload ${u.name}`}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-600" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M6.28 5.22a.75.75 0 011.06 0L10 7.94l2.66-2.72a.75.75 0 011.06 1.06L11.06 9l2.72 2.66a.75.75 0 11-1.06 1.06L10 10.06l-2.66 2.72a.75.75 0 11-1.06-1.06L8.94 9 6.22 6.34a.75.75 0 010-1.12z" clipRule="evenodd" />
+                <path
+                  fillRule="evenodd"
+                  d="M6.28 5.22a.75.75 0 011.06 0L10 7.94l2.66-2.72a.75.75 0 011.06 1.06L11.06 9l2.72 2.66a.75.75 0 11-1.06 1.06L10 10.06l-2.66 2.72a.75.75 0 11-1.06-1.06L8.94 9 6.22 6.34a.75.75 0 010-1.12z"
+                  clipRule="evenodd"
+                />
               </svg>
             </button>
 
-            {u.status === 'uploading' && (
+            {u.status === "uploading" && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="relative flex items-center justify-center">
                   <div className="w-14 h-14 rounded-full bg-black/50 flex items-center justify-center">
@@ -275,7 +307,7 @@ export default function ImageUploader({ images, onChange, max = 6, onUploadingCh
               </div>
             )}
 
-            {u.status === 'error' && (
+            {u.status === "error" && (
               <div className="absolute inset-0 flex items-center justify-center bg-red-50 text-red-600 font-medium">Failed</div>
             )}
           </div>

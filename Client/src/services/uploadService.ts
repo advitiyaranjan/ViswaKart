@@ -1,4 +1,5 @@
-import api from './api';
+import type { AxiosProgressEvent } from "axios";
+import api from "./api";
 
 type UploadOptions = {
   onProgress?: (p: number) => void;
@@ -8,10 +9,10 @@ type UploadOptions = {
 export const uploadService = {
   uploadImage: (file: File, options?: UploadOptions) => {
     const form = new FormData();
-    form.append('image', file);
-    return api.post('/uploads', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      onUploadProgress: (e: ProgressEvent) => {
+    form.append("image", file);
+    return api.post("/uploads", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+      onUploadProgress: (e: AxiosProgressEvent) => {
         if (!e || !e.total) return;
         const percent = Math.round((e.loaded * 100) / e.total);
         options?.onProgress?.(percent);

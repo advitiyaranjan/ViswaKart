@@ -1,8 +1,14 @@
 // Global error handling middleware
 // Must have 4 parameters so Express recognizes it as error handler
 const errorHandler = (err, req, res, next) => {
-  let statusCode = res.statusCode === 200 ? 500 : res.statusCode;
+  let statusCode = err.statusCode || err.status || (res.statusCode >= 400 ? res.statusCode : 500);
   let message = err.message || "Internal Server Error";
+
+  // Upload limits (file too large, too many files)
+  if (err.name === "MulterError") {
+    statusCode = 400;
+    message = err.code === "LIMIT_FILE_SIZE" ? "Images must be 5 MB or smaller" : err.message;
+  }
 
   // Mongoose bad ObjectId
   if (err.name === "CastError") {
@@ -13,7 +19,7 @@ const errorHandler = (err, req, res, next) => {
   // Mongoose duplicate key
   if (err.code === 11000) {
     statusCode = 400;
-    const field = Object.keys(err.keyValue)[0];
+    const field = Object.keys(err.keyValue || {})[0] || "Record";
     message = `${field.charAt(0).toUpperCase() + field.slice(1)} already exists`;
   }
 
@@ -26,6 +32,11 @@ const errorHandler = (err, req, res, next) => {
   }
 
   // JWT errors
+  if (err.name === "VersionError") {
+    statusCode = 409;
+    message = "This record changed. Refresh and try again.";
+  }
+
   if (err.name === "JsonWebTokenError") {
     statusCode = 401;
     message = "Invalid token";
