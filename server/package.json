@@ -8,7 +8,9 @@
     "dev": "nodemon server.js",
     "seed": "node utils/seeder.js",
     "test": "node --test --test-concurrency=1 \"tests/**/*.test.js\"",
-    "reconcile-data": "node scripts/reconcile_data.js"
+    "reconcile-data": "node scripts/reconcile_data.js",
+    "seed:colleges": "node scripts/seed_colleges.js",
+    "migrate:colleges": "node scripts/migrate_colleges.js"
   },
   "dependencies": {
     "@clerk/backend": "^3.2.4",
