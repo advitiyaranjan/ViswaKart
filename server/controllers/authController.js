@@ -1,7 +1,39 @@
 const User = require("../models/User");
 const { validateAddress, fail } = require("../utils/commerce");
+const { sellerSummary } = require("../utils/seller");
+const College = require("../models/College");
+const { requireActiveCollege, PUBLIC_FIELDS } = require("../utils/college");
 
-exports.getMe = async (req, res) => res.json({ success: true, user: req.user });
+/** The saved College Mode preference. A college that was since deactivated is reported, and the mode reads as off. */
+async function collegePreference(user) {
+  const pref = user.collegePreference || {};
+  const college = pref.college ? await College.findById(pref.college).select(PUBLIC_FIELDS).lean() : null;
+  const available = Boolean(college?.isActive);
+  return { college, enabled: Boolean(pref.enabled && available), unavailable: Boolean(pref.college && !available) };
+}
+
+// GET /api/auth/me/college
+exports.getCollegePreference = async (req, res) => {
+  res.json({ success: true, preference: await collegePreference(req.user) });
+};
+
+// PUT /api/auth/me/college { collegeId?, enabled }
+// Turning the mode off keeps the saved college; turning it on needs an active college (given or already saved).
+exports.updateCollegePreference = async (req, res) => {
+  const { collegeId, enabled } = req.body;
+  if (typeof enabled !== "boolean") fail("Enabled must be true or false");
+  const update = { "collegePreference.enabled": enabled };
+  if (collegeId !== undefined) {
+    const college = await requireActiveCollege(collegeId, "That college isn't available. Choose another one.");
+    update["collegePreference.college"] = college._id;
+  } else if (enabled) {
+    await requireActiveCollege(String(req.user.collegePreference?.college ?? ""), "Choose your college to turn on College Mode.");
+  }
+  const user = await User.findByIdAndUpdate(req.user.id, { $set: update }, { new: true });
+  res.json({ success: true, preference: await collegePreference(user) });
+};
+
+exports.getMe = async (req, res) => res.json({ success: true, user: req.user, seller: sellerSummary(req.user) });
 
 exports.updateProfile = async (req, res) => {
   const updates = {};

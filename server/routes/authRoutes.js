@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const {
-  getMe, updateProfile,
+  getMe, updateProfile, getCollegePreference, updateCollegePreference,
   addAddress, updateAddress, deleteAddress,
 } = require("../controllers/authController");
 const { protect } = require("../middleware/authMiddleware");
@@ -13,6 +13,10 @@ const { fail } = require("../utils/commerce");
 // Profile (Clerk-authenticated)
 router.get("/me", protect, getMe);
 router.put("/me", protect, updateProfile);
+
+// College Mode preference
+router.get("/me/college", protect, getCollegePreference);
+router.put("/me/college", protect, updateCollegePreference);
 
 // Addresses
 router.post("/me/addresses", protect, addAddress);

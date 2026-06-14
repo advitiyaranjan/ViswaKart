@@ -82,6 +82,15 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Authoritative seller lifecycle state; the booleans above are kept in sync for older code paths.
+    sellerStatus: {
+      type: String,
+      enum: ["none", "pending", "approved", "rejected", "suspended"],
+      default: "none",
+    },
+    sellerRejectionReason: { type: String, default: "" },
+    sellerSuspensionReason: { type: String, default: "" },
+    sellerReviewedAt: Date,
     sellerRequestedAt: Date,
     sellerApprovedAt: Date,
     // Profile info provided by seller when listing products
@@ -91,6 +100,13 @@ const userSchema = new mongoose.Schema(
       roomNumber: { type: String, default: "" },
       courseYear: { type: String, default: "" },
       mobileNumber: { type: String, default: "" },
+      // College this seller's listings belong to. Set on the application; afterwards only admins change it.
+      college: { type: mongoose.Schema.Types.ObjectId, ref: "College", default: null },
+    },
+    // College Mode shopping preference. Turning the mode off keeps the college for next time.
+    collegePreference: {
+      college: { type: mongoose.Schema.Types.ObjectId, ref: "College", default: null },
+      enabled: { type: Boolean, default: false },
     },
     sellerRequestMessage: { type: String, default: "" },
   },
