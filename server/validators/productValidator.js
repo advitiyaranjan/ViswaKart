@@ -4,18 +4,19 @@ exports.productValidator = [
   body("name")
     .trim()
     .notEmpty().withMessage("Product name is required")
-    .isLength({ max: 200 }).withMessage("Name cannot exceed 200 characters"),
+    .isLength({ min: 2, max: 200 }).withMessage("Product name must be 2–200 characters"),
   body("description")
     .trim()
-    .notEmpty().withMessage("Description is required"),
+    .notEmpty().withMessage("Description is required")
+    .isLength({ min: 10, max: 5000 }).withMessage("Description must be 10–5000 characters"),
   body("price")
     .notEmpty().withMessage("Price is required")
-    .isFloat({ min: 0 }).withMessage("Price must be a non-negative number"),
+    .isFloat({ gt: 0 }).withMessage("Price must be greater than zero"),
   body("category")
     .notEmpty().withMessage("Category is required"),
   body("stock")
     .optional()
-    .isInt({ min: 0 }).withMessage("Stock must be a non-negative integer"),
+    .isInt({ min: 0, max: 100000 }).withMessage("Stock must be a whole number between 0 and 100000"),
   // Require seller contact/location when a non-admin creates product
   body("sellerMobile").custom((val, { req }) => {
     // If admin, allow absent

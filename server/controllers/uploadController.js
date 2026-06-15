@@ -48,7 +48,8 @@ exports.uploadImage = async (req, res) => {
         const result = await cloudinary.uploader.upload(dataUri, { folder, resource_type: 'image' });
         return res.status(200).json({ success: true, url: result.secure_url });
       } catch (err) {
-        return res.status(500).json({ success: false, message: 'Cloud upload failed', error: err.message || err });
+        console.error('[UPLOAD] Cloudinary upload failed:', err.message || err);
+        return res.status(502).json({ success: false, message: 'The image service is unavailable. Please try again.' });
       }
     }
 
@@ -66,6 +67,7 @@ exports.uploadImage = async (req, res) => {
     const url = `${base}/uploads/${filename}`;
     return res.status(200).json({ success: true, url });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Upload error', error: err.message });
+    console.error('[UPLOAD] Upload failed:', err.message || err);
+    return res.status(500).json({ success: false, message: 'The image could not be saved. Please try again.' });
   }
 };

@@ -3,6 +3,11 @@ const router = express.Router();
 const multer = require('multer');
 const { uploadImage, IMAGE_TYPES } = require('../controllers/uploadController');
 const { protect } = require('../middleware/authMiddleware');
+const { canSell } = require('../utils/seller');
+
+// Only people who can list products need to upload product photos.
+const requireSeller = (req, res, next) =>
+  canSell(req.user) ? next() : res.status(403).json({ success: false, message: 'Seller approval is required to upload product images' });
 
 const storage = multer.memoryStorage();
 const upload = multer({
@@ -16,7 +21,7 @@ const upload = multer({
   },
 });
 
-// Only signed-in users (sellers and admins) may upload; anonymous uploads were an open file host.
-router.post('/', protect, upload.single('image'), uploadImage);
+// Only approved sellers and admins may upload; anonymous uploads were an open file host.
+router.post('/', protect, requireSeller, upload.single('image'), uploadImage);
 
 module.exports = router;

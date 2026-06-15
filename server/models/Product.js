@@ -45,6 +45,9 @@ const productSchema = new mongoose.Schema(
     },
     // Seller / marketplace fields
     seller: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    // Campus community this listing belongs to, copied from the seller's affiliation when it was created.
+    // Unassigned (null) products appear in the global catalogue but never in College Mode.
+    college: { type: mongoose.Schema.Types.ObjectId, ref: "College", default: null },
     // Contact snapshot copied from the seller at time of listing
     sellerEmail: { type: String, lowercase: true, index: true, sparse: true },
     sellerMobile: { type: String, index: true, sparse: true },
@@ -63,6 +66,9 @@ const productSchema = new mongoose.Schema(
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
+
+// College Mode listings: college + visibility, then the common category/sort filters.
+productSchema.index({ college: 1, isActive: 1, category: 1, createdAt: -1 });
 
 // Auto-generate slug from name
 productSchema.pre("save", function (next) {
