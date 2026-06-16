@@ -19,6 +19,10 @@ const paymentRoutes = require("./routes/paymentRoutes");
 const webhookRoutes = require("./routes/webhookRoutes");
 const newsletterRoutes = require("./routes/newsletterRoutes");
 const supportRoutes = require("./routes/supportRoutes");
+const collegeRoutes = require("./routes/collegeRoutes");
+
+// Fail fast on unsafe payment configuration (e.g. a live key in development) instead of at the first checkout.
+if (process.env.NODE_ENV !== "test") require("./services/paymentService").checkConfig();
 
 const app = express();
 
@@ -33,6 +37,9 @@ const limiter = rateLimit({
   // enable standard RateLimit headers and disable legacy headers
   standardHeaders: true,
   legacyHeaders: false,
+  // Payment and identity providers retry webhooks; throttling them would delay order confirmation.
+  // Automated tests make hundreds of requests from one address.
+  skip: (req) => req.originalUrl.startsWith("/api/webhooks/") || process.env.NODE_ENV === "test",
   message: { success: false, message: "Too many requests, please try again later." },
 });
 // CORS — only allow the configured client origin
@@ -84,6 +91,7 @@ if (process.env.NODE_ENV === "development") {
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/categories", categoryRoutes);
+app.use("/api/colleges", collegeRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/orders", orderRoutes);
 

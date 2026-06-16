@@ -15,6 +15,8 @@ const orderItemSchema = new mongoose.Schema({
   inventoryReserved: { type: Boolean, default: false },
   // Seller snapshot for this item
   seller: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  // Historical record: the product's college when the order was placed (later changes don't rewrite orders).
+  college: { type: mongoose.Schema.Types.ObjectId, ref: "College", default: null },
   sellerName: { type: String, default: "" },
   sellerEmail: { type: String, default: "" },
   sellerMobile: { type: String, default: "" },
@@ -57,6 +59,17 @@ const orderSchema = new mongoose.Schema(
       updateTime: String,
       emailAddress: String,
     },
+    // Card refunds issued for cancelled items (in rupees, like the other totals)
+    refundedAmount: { type: Number, default: 0, min: 0 },
+    refunds: [
+      {
+        _id: false,
+        id: String,
+        amount: Number,
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
+    refundError: { type: String, default: "" },
     itemsPrice: { type: Number, required: true },
     shippingPrice: { type: Number, required: true, default: 0 },
     taxPrice: { type: Number, required: true, default: 0 },

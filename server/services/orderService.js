@@ -26,7 +26,7 @@ async function quoteOrder(body, session = null) {
     const seller = sellerMap.get(String(product.seller));
     return {
       product: product._id, name: product.name, image: product.images?.[0] || "", ...pricing,
-      quantity, seller: product.seller || null, sellerName: seller?.sellerProfile?.name || seller?.name || "",
+      quantity, seller: product.seller || null, college: product.college || null, sellerName: seller?.sellerProfile?.name || seller?.name || "",
       sellerEmail: product.sellerEmail || seller?.email || "", sellerMobile: product.sellerMobile || seller?.sellerProfile?.mobileNumber || "",
       sellerHostelNumber: product.sellerHostelNumber || seller?.sellerProfile?.hostelNumber || "",
       sellerRoomNumber: product.sellerRoomNumber || seller?.sellerProfile?.roomNumber || "", itemStatus: "Pending",

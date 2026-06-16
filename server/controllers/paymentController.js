@@ -1,38 +1,21 @@
-const Stripe = require("stripe");
-const Order = require("../models/Order");
-const { quoteOrder, createOrder } = require("../services/orderService");
-const { cartFingerprint, fail } = require("../utils/commerce");
+const paymentService = require("../services/paymentService");
 
-const getStripe = () => {
-  if (!process.env.STRIPE_SECRET_KEY) fail("Card payments are currently unavailable", 503);
-  return new Stripe(process.env.STRIPE_SECRET_KEY);
+const STATUS_BY_STATE = { paid: 200, processing: 202, requires_action: 202, failed: 402, canceled: 402, refunded: 409 };
+
+// GET /api/payments/config — tells checkout whether card payments can be offered. Never exposes keys.
+exports.getConfig = async (req, res) => {
+  res.json({ success: true, cardEnabled: paymentService.isEnabled(), currency: paymentService.CURRENCY });
 };
 
+// POST /api/payments/create-intent — prices the cart on the server and returns a PaymentIntent client secret.
 exports.createPaymentIntent = async (req, res) => {
-  const quote = await quoteOrder(req.body);
-  const intent = await getStripe().paymentIntents.create({
-    amount: Math.round(quote.breakdown.totalPrice * 100), currency: "inr", automatic_payment_methods: { enabled: true },
-    metadata: { userId: String(req.user.id), cartHash: cartFingerprint(quote.items, quote.shippingMethod), shippingMethod: quote.shippingMethod },
-  });
-  res.json({ success: true, clientSecret: intent.client_secret, paymentIntentId: intent.id, breakdown: quote.breakdown });
+  const result = await paymentService.createIntent(req.user, req.body);
+  res.json({ success: true, ...result });
 };
 
+// POST /api/payments/confirm-order — the browser reports it finished paying; Stripe is asked for the real outcome.
 exports.confirmOrder = async (req, res) => {
-  if (typeof req.body.paymentIntentId !== "string" || !/^pi_[A-Za-z0-9]+$/.test(req.body.paymentIntentId)) fail("Invalid payment intent");
-  const intent = await getStripe().paymentIntents.retrieve(req.body.paymentIntentId);
-  if (intent.status !== "succeeded") fail("Payment not completed");
-  if (intent.metadata.userId !== String(req.user.id)) fail("Payment belongs to another account", 403);
-  if (intent.currency !== "inr") fail("Payment currency does not match checkout");
-  const existing = await Order.findOne({ "paymentResult.id": intent.id });
-  if (existing) return res.json({ success: true, order: existing });
-  const body = { ...req.body, shippingMethod: intent.metadata.shippingMethod };
-  const { order } = await createOrder(req.user.id, body, {
-    id: intent.id,
-    validate(quote) {
-      if (intent.metadata.cartHash !== cartFingerprint(quote.items, quote.shippingMethod) || intent.amount_received !== Math.round(quote.breakdown.totalPrice * 100)) {
-        fail("Payment does not match this cart. Contact support before retrying.", 409);
-      }
-    },
-  });
-  res.status(201).json({ success: true, order });
+  const result = await paymentService.finalizePayment(req.body.paymentIntentId, { userId: req.user.id });
+  const status = result.state === "paid" && result.created ? 201 : STATUS_BY_STATE[result.state] || 200;
+  res.status(status).json({ success: result.state === "paid", state: result.state, order: result.order, message: result.message });
 };

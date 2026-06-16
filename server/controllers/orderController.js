@@ -2,14 +2,9 @@ const Order = require("../models/Order");
 const User = require("../models/User");
 const orderService = require("../services/orderService");
 const { pagination, escapeRegex, STATUSES, fail } = require("../utils/commerce");
-const { sendOrderConfirmationEmail, sendSellerOrderNotificationEmail, sendItemStatusUpdateEmail } = require("../utils/email");
-
-async function notifyOrder(order, buyer) {
-  if (buyer.email) await sendOrderConfirmationEmail(buyer.email, buyer.name || "Customer", order).catch(() => {});
-  for (const item of order.items) {
-    if (item.sellerEmail) await sendSellerOrderNotificationEmail(item.sellerEmail, item.sellerName || "Seller", [{ productId: item.product, name: item.name, quantity: item.quantity, price: item.price }], { buyerName: buyer.name, buyerEmail: buyer.email, shippingAddress: order.shippingAddress }, order).catch(() => {});
-  }
-}
+const { refundCancelledItems } = require("../services/paymentService");
+const { notifyOrder } = require("../services/orderNotifications");
+const { sendItemStatusUpdateEmail } = require("../utils/email");
 
 exports.quoteOrder = async (req, res) => {
   const quote = await orderService.quoteOrder(req.body);
@@ -61,12 +56,14 @@ exports.getAllOrders = async (req, res) => {
 };
 
 exports.updateOrderStatus = async (req, res) => {
-  const order = await orderService.updateStatus(req.params.id, req.body.status, { user: req.user });
+  let order = await orderService.updateStatus(req.params.id, req.body.status, { user: req.user });
+  if (req.body.status === "Cancelled") order = await refundCancelledItems(order);
   res.json({ success: true, order });
 };
 
 exports.updateOrderItemStatus = async (req, res) => {
-  const order = await orderService.updateStatus(req.params.orderId, req.body.status, { itemId: req.params.itemId, user: req.user });
+  let order = await orderService.updateStatus(req.params.orderId, req.body.status, { itemId: req.params.itemId, user: req.user });
+  if (req.body.status === "Cancelled") order = await refundCancelledItems(order);
   const buyer = await User.findById(order.user).lean();
   if (buyer?.email) void sendItemStatusUpdateEmail(buyer.email, buyer.name, order, order.items.id(req.params.itemId), req.body.status).catch(() => {});
   res.json({ success: true, order });
@@ -88,6 +85,7 @@ exports.getSellerOrders = async (req, res) => {
 };
 
 exports.cancelOrder = async (req, res) => {
-  const order = await orderService.updateStatus(req.params.id, "Cancelled", { user: req.user, ownerOnly: true });
+  let order = await orderService.updateStatus(req.params.id, "Cancelled", { user: req.user, ownerOnly: true });
+  order = await refundCancelledItems(order);
   res.json({ success: true, order });
 };
