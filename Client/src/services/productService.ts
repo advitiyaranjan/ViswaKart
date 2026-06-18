@@ -12,6 +12,8 @@ export interface ProductQueryParams {
   minRating?: number;
   inStock?: boolean;
   seller?: string;
+  /** College Mode: only products of this college. */
+  college?: string;
   sellerEmail?: string;
   includeInactive?: boolean;
 }
