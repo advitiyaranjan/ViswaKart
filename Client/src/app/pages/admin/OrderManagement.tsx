@@ -36,6 +36,9 @@ interface OrderDetail extends OrderSummary {
   shippingAddress: { street: string; city: string; state: string; zipCode: string; country: string };
   shippingMethod?: string;
   paymentMethod: string;
+  paymentResult?: { id?: string; status?: string };
+  refundedAmount?: number;
+  refundError?: string;
   itemsPrice: number;
   shippingPrice: number;
   paidAt?: string;
@@ -452,10 +455,19 @@ export default function OrderManagement() {
                   <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
                     <Banknote className="h-4 w-4 text-teal-700" /> Payment
                   </h3>
-                  <p className="text-sm text-slate-600">{detail.paymentMethod === "cod" ? "Cash on delivery" : "Card"}</p>
+                  <p className="text-sm text-slate-600">{detail.paymentMethod === "cod" ? "Cash on delivery" : "Card / online (Stripe)"}</p>
                   <p className={`text-sm font-medium ${detail.isPaid ? "text-teal-700" : "text-amber-700"}`}>
                     {detail.isPaid ? `Paid ${formatDate(detail.paidAt)}` : "Not yet paid"}
                   </p>
+                  {detail.paymentResult?.id && detail.paymentMethod === "card" && (
+                    <p className="mt-1 break-all font-mono text-xs text-slate-500">{detail.paymentResult.id}</p>
+                  )}
+                  {Boolean(detail.refundedAmount) && <p className="mt-1 text-sm text-slate-600">Refunded {formatCurrency(detail.refundedAmount!)}</p>}
+                  {detail.refundError && (
+                    <p role="alert" className="mt-2 rounded-lg bg-red-50 p-2 text-xs text-red-800">
+                      {detail.refundError}. Issue this refund from the Stripe Dashboard.
+                    </p>
+                  )}
                   {detail.deliveredAt && <p className="mt-1 text-xs text-slate-500">Delivered {formatDate(detail.deliveredAt)}</p>}
                 </div>
               </section>

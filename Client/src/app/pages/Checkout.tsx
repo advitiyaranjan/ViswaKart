@@ -1,14 +1,21 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation } from "react-router";
-import { ArrowLeft, CheckCircle2, MapPin, Plus, ShoppingBag, Truck, Banknote, RefreshCw } from "lucide-react";
+import { ArrowLeft, MapPin, Plus, ShoppingBag, Truck, Banknote, RefreshCw, CreditCard, Wallet } from "lucide-react";
 import { useCart } from "../../context/CartContext";
 import { authService, type AddressData } from "../../services/authService";
 import { orderService } from "../../services/orderService";
+import { paymentService, clearPurchasedItems, type PaymentOutcome } from "../../services/paymentService";
 import { addressSchema } from "../../lib/validationSchemas";
-import { DELIVERY_OPTIONS, makeRequestId, shortOrderId, type ShippingMethod } from "../../lib/commerce";
+import { DELIVERY_OPTIONS, makeRequestId, type ShippingMethod } from "../../lib/commerce";
 import { formatCurrency } from "../../lib/currency";
 import { Button } from "../components/Button";
 import { ProductImage } from "../components/ProductImage";
+import { OrderOutcome } from "../components/OrderOutcome";
+
+// The Stripe SDK is only downloaded when a shopper actually pays by card.
+const StripePayment = lazy(() => import("../components/StripePayment"));
+const STRIPE_KEY_CONFIGURED = Boolean(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
+type PaymentMethod = "cod" | "card";
 
 interface Address extends AddressData {
   _id: string;
@@ -80,6 +87,29 @@ export default function Checkout({ buyNow = false }: { buyNow?: boolean }) {
   const [submitError, setSubmitError] = useState("");
   const [order, setOrder] = useState<{ _id: string; totalPrice: number } | null>(null);
   const submitLock = useRef(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
+  const [cardEnabled, setCardEnabled] = useState(false);
+  const [intent, setIntent] = useState<{ clientSecret: string; paymentIntentId: string; total: number } | null>(null);
+  const [cardOutcome, setCardOutcome] = useState<PaymentOutcome | null>(null);
+  const paymentRef = useRef<HTMLDivElement>(null);
+
+  // Card payments are offered only when both the publishable key and the server's Stripe setup are present.
+  useEffect(() => {
+    if (!STRIPE_KEY_CONFIGURED) return;
+    let active = true;
+    paymentService
+      .getConfig()
+      .then(({ data }) => active && setCardEnabled(Boolean(data.cardEnabled)))
+      .catch(() => active && setCardEnabled(false));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Any change to what is being bought, where, or how fast invalidates a prepared card payment.
+  useEffect(() => {
+    setIntent(null);
+  }, [requestKey, shippingMethod, selectedAddress, paymentMethod]);
 
   // One idempotency key per cart contents, kept across reloads so a retried submit never double-orders.
   const [requestId] = useState(() => {
@@ -162,7 +192,40 @@ export default function Checkout({ buyNow = false }: { buyNow?: boolean }) {
     }
   }
 
+  async function startCardPayment() {
+    const address = addresses.find((value) => value._id === selectedAddress);
+    if (!quote || !address || submitLock.current || quoteLoading) return;
+    submitLock.current = true;
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      const { data } = await paymentService.createIntent({ items: requestedItems, shippingAddress: address, shippingMethod, requestId });
+      setIntent({ clientSecret: data.clientSecret, paymentIntentId: data.paymentIntentId, total: data.breakdown.totalPrice });
+      requestAnimationFrame(() => paymentRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    } catch (err: any) {
+      setSubmitError(err.response?.data?.message || "We couldn't start a secure payment. Please try again.");
+      if (err.response?.status === 409) setRetry((value) => value + 1);
+    } finally {
+      submitLock.current = false;
+      setSubmitting(false);
+    }
+  }
+
+  function handleCardOutcome(outcome: PaymentOutcome) {
+    if (intent && (outcome.state === "paid" || outcome.state === "processing")) {
+      clearPurchasedItems(intent.paymentIntentId, removeItems);
+      window.scrollTo({ top: 0 });
+    }
+    // Declines are shown inside the payment form; only final outcomes replace the page.
+    if (outcome.state === "failed" || outcome.state === "requires_action") {
+      setSubmitError(outcome.message || "Your payment wasn't completed. Please try again.");
+      return;
+    }
+    setCardOutcome(outcome);
+  }
+
   async function placeOrder() {
+    if (paymentMethod === "card") return startCardPayment();
     const address = addresses.find((value) => value._id === selectedAddress);
     if (!quote || !address || submitLock.current || quoteLoading) return;
     submitLock.current = true;
@@ -195,26 +258,8 @@ export default function Checkout({ buyNow = false }: { buyNow?: boolean }) {
     }
   }
 
-  if (order) {
-    return (
-      <div className="mx-auto max-w-lg px-4 py-16">
-        <div className="rounded-3xl border border-border bg-white p-7 text-center sm:p-10">
-          <CheckCircle2 className="mx-auto mb-6 size-16 text-primary" />
-          <h1 className="text-3xl font-semibold">Order placed!</h1>
-          <p className="mt-3 text-muted-foreground">
-            Pay {formatCurrency(order.totalPrice)} in cash when it arrives. You can follow its progress in My Orders.
-          </p>
-          <p className="my-6 break-all rounded-xl bg-muted p-3 font-mono text-sm">Order {shortOrderId(order._id)}</p>
-          <Link to="/account#/orders">
-            <Button className="w-full">Track my order</Button>
-          </Link>
-          <Link className="mt-5 block font-medium text-primary" to="/products">
-            Continue shopping
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  if (order) return <OrderOutcome kind="cod" order={order} />;
+  if (cardOutcome) return <OrderOutcome kind={cardOutcome.state} order={cardOutcome.order} message={cardOutcome.message} retryTo={buyNow ? "/products" : "/cart"} />;
 
   if (!requestedItems.length) {
     return (
@@ -229,12 +274,20 @@ export default function Checkout({ buyNow = false }: { buyNow?: boolean }) {
     );
   }
 
-  const canPlace = Boolean(quote) && !quoteLoading && Boolean(selectedAddress) && !submitting && !addressLoading;
-  const placeLabel = submitting
-    ? "Placing your order…"
-    : quote
-      ? `Place order · ${formatCurrency(quote.breakdown.totalPrice)}`
-      : "Place order";
+  const canPlace = Boolean(quote) && !quoteLoading && Boolean(selectedAddress) && !submitting && !addressLoading && !intent;
+  const total = quote ? ` · ${formatCurrency(quote.breakdown.totalPrice)}` : "";
+  const placeLabel =
+    paymentMethod === "card"
+      ? submitting
+        ? "Preparing secure payment…"
+        : `Continue to payment${total}`
+      : submitting
+        ? "Placing your order…"
+        : `Place order${total}`;
+  const paymentOptions: { id: PaymentMethod; label: string; detail: string; icon: typeof Banknote }[] = [
+    { id: "cod", label: "Cash on delivery", detail: "Pay when you receive your order. You can cancel until it ships.", icon: Banknote },
+    ...(cardEnabled ? [{ id: "card" as const, label: "Pay online by card", detail: "Pay securely now with Stripe. Cancelled items are refunded automatically.", icon: CreditCard }] : []),
+  ];
 
   return (
     <div className="mx-auto max-w-6xl px-4 pb-32 pt-8 sm:px-6 sm:pt-12 lg:pb-12">
@@ -246,7 +299,7 @@ export default function Checkout({ buyNow = false }: { buyNow?: boolean }) {
         Back to {buyNow ? "products" : "your cart"}
       </Link>
       <h1 className="mb-2 text-3xl font-semibold tracking-tight sm:text-4xl">Checkout</h1>
-      <p className="mb-8 text-muted-foreground">Confirm where it's going and how fast you'd like it.</p>
+      <p className="mb-8 text-muted-foreground">Confirm where it's going, how fast you'd like it, and how you'll pay.</p>
 
       <div className="grid items-start gap-7 lg:grid-cols-[minmax(0,1fr)_380px]">
         <div className="space-y-6">
@@ -378,6 +431,54 @@ export default function Checkout({ buyNow = false }: { buyNow?: boolean }) {
               ))}
             </div>
           </section>
+
+          <section ref={paymentRef} className="scroll-mt-40 rounded-2xl border border-border bg-white p-5 sm:p-6">
+            <h2 className="mb-5 flex items-center gap-3 text-lg font-semibold">
+              <span className="flex size-8 items-center justify-center rounded-full bg-primary text-sm text-white">3</span>
+              <Wallet className="size-5 text-primary" />
+              Payment
+            </h2>
+            <div className="space-y-3">
+              {paymentOptions.map(({ id, label, detail, icon: Icon }) => (
+                <label
+                  key={id}
+                  className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors ${paymentMethod === id ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+                >
+                  <input
+                    type="radio"
+                    name="payment"
+                    className="mt-0.5 size-5 shrink-0 accent-primary"
+                    checked={paymentMethod === id}
+                    onChange={() => setPaymentMethod(id)}
+                    disabled={submitting}
+                  />
+                  <span className="flex-1 text-sm">
+                    <span className="block font-medium">{label}</span>
+                    <span className="text-muted-foreground">{detail}</span>
+                  </span>
+                  <Icon className="size-5 shrink-0 text-primary" />
+                </label>
+              ))}
+            </div>
+            {paymentMethod === "card" && intent && (
+              <div className="mt-5 border-t border-border pt-5">
+                <Suspense
+                  fallback={
+                    <p role="status" className="py-6 text-center text-sm text-muted-foreground">
+                      Loading secure payment form…
+                    </p>
+                  }
+                >
+                  <StripePayment
+                    clientSecret={intent.clientSecret}
+                    amount={intent.total}
+                    pending={{ paymentIntentId: intent.paymentIntentId, productIds: requestedItems.map((item) => item.product), fromCart: !buyNow }}
+                    onOutcome={handleCardOutcome}
+                  />
+                </Suspense>
+              </div>
+            )}
+          </section>
         </div>
 
         <aside className="rounded-2xl border border-border bg-white p-5 sm:p-6 lg:sticky lg:top-36">
@@ -429,10 +530,12 @@ export default function Checkout({ buyNow = false }: { buyNow?: boolean }) {
                   </div>
                 </dl>
                 <div className="mb-5 mt-5 flex gap-3 rounded-xl bg-primary/5 p-4 text-sm">
-                  <Banknote className="size-5 shrink-0 text-primary" />
+                  {paymentMethod === "card" ? <CreditCard className="size-5 shrink-0 text-primary" /> : <Banknote className="size-5 shrink-0 text-primary" />}
                   <span>
-                    <strong className="block">Cash on delivery</strong>
-                    <span className="text-muted-foreground">Pay when you receive your order. You can cancel until it ships.</span>
+                    <strong className="block">{paymentMethod === "card" ? "Pay online by card" : "Cash on delivery"}</strong>
+                    <span className="text-muted-foreground">
+                      {intent ? "Enter your payment details in step 3 to finish." : paymentMethod === "card" ? "Secured by Stripe." : "Pay when you receive your order."}
+                    </span>
                   </span>
                 </div>
               </>
@@ -443,22 +546,26 @@ export default function Checkout({ buyNow = false }: { buyNow?: boolean }) {
               {submitError}
             </p>
           )}
-          <Button size="lg" className="hidden w-full lg:flex" disabled={!canPlace} onClick={placeOrder}>
-            {placeLabel}
-          </Button>
+          {!intent && (
+            <Button size="lg" className="hidden w-full lg:flex" disabled={!canPlace} onClick={placeOrder}>
+              {placeLabel}
+            </Button>
+          )}
           {!selectedAddress && !addressLoading && (
             <p className="mt-3 text-center text-xs text-muted-foreground">Add or select a delivery address to continue.</p>
           )}
         </aside>
       </div>
 
-      <div className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-border bg-white/95 px-4 pt-3 backdrop-blur-xl lg:hidden">
-        <div className="mx-auto max-w-xl">
-          <Button size="lg" className="w-full" disabled={!canPlace} onClick={placeOrder}>
-            {placeLabel}
-          </Button>
+      {!intent && (
+        <div className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-border bg-white/95 px-4 pt-3 backdrop-blur-xl lg:hidden">
+          <div className="mx-auto max-w-xl">
+            <Button size="lg" className="w-full" disabled={!canPlace} onClick={placeOrder}>
+              {placeLabel}
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

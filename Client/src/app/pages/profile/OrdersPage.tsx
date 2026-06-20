@@ -28,6 +28,7 @@ interface Order {
   shippingPrice: number;
   status: string;
   isPaid?: boolean;
+  refundedAmount?: number;
   createdAt: string;
 }
 
@@ -212,8 +213,9 @@ export default function OrdersPage() {
 
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <p className="text-xs text-muted-foreground">
-                        {order.paymentMethod === "cod" ? "Cash on delivery" : "Paid by card"} ·{" "}
+                        {order.paymentMethod === "cod" ? "Cash on delivery" : "Paid online"} ·{" "}
                         {order.isPaid ? "Paid" : "Payment due on delivery"}
+                        {order.refundedAmount ? ` · ${formatCurrency(order.refundedAmount)} refunded` : ""}
                       </p>
                       {isCancellable(order.status) && (
                         <Button
