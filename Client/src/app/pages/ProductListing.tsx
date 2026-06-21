@@ -7,6 +7,9 @@ import { CatalogCategory, CatalogProduct, CatalogGrid, CatalogMessage, CatalogPa
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "../components/ui/sheet";
 import { productService, categoryService } from "../../services/productService";
 import { formatCurrency } from "../../lib/currency";
+import { CollegeEmptyState } from "../components/college/CollegeMode";
+import { usePageResetOnCollegeChange } from "../components/college/usePageResetOnCollegeChange";
+import { useCollegeMode } from "../../context/CollegeModeContext";
 
 const SORTS = [
   { value: "-createdAt", label: "Newest arrivals" },
@@ -27,6 +30,8 @@ interface FilterChip {
 
 export default function ProductListing() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { collegeFilter, ready, markUnavailable } = useCollegeMode();
+  usePageResetOnCollegeChange(collegeFilter, searchParams, setSearchParams);
   const category = searchParams.get("category") || "";
   const sort = SORTS.some((option) => option.value === searchParams.get("sort")) ? searchParams.get("sort")! : "-createdAt";
   const page = Math.max(1, Math.floor(Number(searchParams.get("page")) || 1));
@@ -77,7 +82,10 @@ export default function ProductListing() {
       sort,
       minRating: minRating || undefined,
       inStock: inStock || undefined,
+      college: collegeFilter,
     };
+    // Wait for the saved College Mode preference so global results never flash first.
+    if (!ready) return;
     productService
       .getProducts(query)
       .then((res) => {
@@ -86,12 +94,16 @@ export default function ProductListing() {
         setTotal(res.data.total ?? 0);
         setPages(Math.max(1, res.data.pages ?? 1));
       })
-      .catch(() => current && setError("We couldn't load these products. Please check your connection and try again."))
+      .catch((err) => {
+        if (!current) return;
+        if (collegeFilter && err?.response?.status === 404) markUnavailable();
+        else setError("We couldn't load these products. Please check your connection and try again.");
+      })
       .finally(() => current && setLoading(false));
     return () => {
       current = false;
     };
-  }, [page, category, minPrice, maxPrice, sort, minRating, inStock, refresh]);
+  }, [page, category, minPrice, maxPrice, sort, minRating, inStock, refresh, collegeFilter, ready, markUnavailable]);
 
   function update(values: Record<string, string>) {
     const next = new URLSearchParams(searchParams);
@@ -341,6 +353,8 @@ export default function ProductListing() {
           )}
           {error ? (
             <CatalogMessage error title="Products couldn't load" message={error} onAction={() => setRefresh((value) => value + 1)} />
+          ) : !loading && products.length === 0 && collegeFilter && page === 1 ? (
+            <CollegeEmptyState filtered={Boolean(category || minPrice || maxPrice || minRating || inStock)} />
           ) : !loading && products.length === 0 ? (
             <CatalogMessage
               title={page > 1 ? "You've reached the end" : "No matches this time"}

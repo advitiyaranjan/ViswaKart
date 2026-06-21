@@ -1,5 +1,6 @@
 import { useParams, Link, useNavigate } from "react-router";
 import {
+  GraduationCap,
   Star,
   ShoppingCart,
   Heart,
@@ -25,6 +26,8 @@ import { productService, getCachedProductData } from "../../services/productServ
 import { useCart } from "../../context/CartContext";
 import { useWishlist } from "../../context/WishlistContext";
 import { useAuth } from "../../context/AuthContext";
+import { useCollegeMode } from "../../context/CollegeModeContext";
+import { collegeLocation } from "../../lib/college";
 import { formatCurrency } from "../../lib/currency";
 import { availableStock, getProductPricing, DELIVERY_OPTIONS } from "../../lib/commerce";
 
@@ -169,12 +172,6 @@ export default function ProductDetail() {
         if (!current) return;
         const next: CatalogProduct = res.data.product;
         setProduct(next);
-        if (next.category?.slug) {
-          productService
-            .getProducts({ category: next.category.slug, limit: 5 })
-            .then((r) => current && setRelated((r.data.products as CatalogProduct[]).filter((p) => p._id !== next._id).slice(0, 4)))
-            .catch(() => {});
-        }
       })
       .catch((err) => {
         if (!current) return;
@@ -186,6 +183,23 @@ export default function ProductDetail() {
       current = false;
     };
   }, [id, reload]);
+
+  // "You may also like" follows College Mode, so it never suggests products from another campus.
+  const { collegeFilter, enabled: collegeMode, college: selectedCollege, openPicker } = useCollegeMode();
+  const relatedCategory = product?.category?.slug;
+  const productId = product?._id;
+  useEffect(() => {
+    let current = true;
+    setRelated([]);
+    if (!relatedCategory) return;
+    productService
+      .getProducts({ category: relatedCategory, limit: 5, college: collegeFilter })
+      .then((r) => current && setRelated((r.data.products as CatalogProduct[]).filter((p) => p._id !== productId).slice(0, 4)))
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [relatedCategory, productId, collegeFilter]);
 
   useEffect(() => {
     setQuantity(1);
@@ -240,6 +254,8 @@ export default function ProductDetail() {
   }
 
   const images = product.images?.length ? product.images : [""];
+  const productCollege = product.college && typeof product.college === "object" ? product.college : null;
+  const outsideCollege = collegeMode && Boolean(selectedCollege) && productCollege?._id !== selectedCollege?._id;
   const pricing = getProductPricing(product);
   const available = availableStock(product);
   const inCart = items.find((item) => item._id === product._id)?.quantity ?? 0;
@@ -330,6 +346,28 @@ export default function ProductDetail() {
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-primary">{product.category.name}</p>
           )}
           <h1 className="mb-3 break-words text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">{product.name}</h1>
+          {productCollege && (
+            <p className="-mt-1 mb-3 flex items-center gap-1.5 text-sm text-muted-foreground">
+              <GraduationCap className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+              <span>
+                Listed at <span className="font-medium text-foreground">{productCollege.name}</span>
+                {collegeLocation(productCollege) && ` · ${collegeLocation(productCollege)}`}
+              </span>
+            </p>
+          )}
+          {outsideCollege && (
+            <div role="note" className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <p>
+                {productCollege
+                  ? `This item is from ${productCollege.name}, outside your College Mode selection (${selectedCollege?.name}).`
+                  : `This item isn't linked to a college, so it doesn't appear in College Mode for ${selectedCollege?.name}.`}{" "}
+                You can still buy it.
+              </p>
+              <button type="button" onClick={openPicker} className="mt-1 font-semibold underline">
+                Change college
+              </button>
+            </div>
+          )}
 
           <a href="#reviews" className="mb-5 inline-flex min-h-8 items-center gap-2 text-sm">
             {product.numReviews > 0 ? (

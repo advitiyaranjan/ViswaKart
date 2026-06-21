@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { Star, ShoppingCart, Check, Heart } from "lucide-react";
+import { Star, ShoppingCart, Check, Heart, GraduationCap } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "./Button";
 import { ProductImage } from "./ProductImage";
@@ -19,9 +19,11 @@ interface ProductCardProps {
   category?: string;
   /** Units the customer can buy (already accounts for sold/inactive listings). */
   stock?: number;
+  /** Campus the listing belongs to; omitted when every product shown is from the same college. */
+  college?: string;
 }
 
-export function ProductCard({ id, name, price, originalPrice, rating, reviews, image, category, stock = 0 }: ProductCardProps) {
+export function ProductCard({ id, name, price, originalPrice, rating, reviews, image, category, stock = 0, college }: ProductCardProps) {
   const { addToCart, items } = useCart();
   const { isWishlisted, toggleWishlist } = useWishlist();
   const [added, setAdded] = useState(false);
@@ -81,6 +83,12 @@ export function ProductCard({ id, name, price, originalPrice, rating, reviews, i
         >
           {name}
         </Link>
+        {college && (
+          <p className="-mt-1 mb-2 flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+            <GraduationCap className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span className="truncate">{college}</span>
+          </p>
+        )}
         <div className="mb-4 flex items-center gap-1.5 text-xs text-muted-foreground">
           {reviews > 0 ? (
             <>

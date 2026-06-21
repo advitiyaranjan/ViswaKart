@@ -3,6 +3,7 @@ import { ProductCard } from "./ProductCard";
 import { ProductCardSkeleton } from "./LoadingStates";
 import { Button } from "./Button";
 import { availableStock } from "../../lib/commerce";
+import { useCollegeMode } from "../../context/CollegeModeContext";
 
 export interface CatalogReview {
   _id: string;
@@ -30,6 +31,7 @@ export interface CatalogProduct {
   sellerEmail?: string | null;
   sellerHostelNumber?: string;
   category?: { _id: string; name: string; slug: string };
+  college?: { _id: string; name: string; city?: string; state?: string } | string | null;
   specifications?: string | Record<string, unknown>;
   productAge?: string;
   reviews?: CatalogReview[];
@@ -44,6 +46,9 @@ export interface CatalogCategory {
 }
 
 export function ProductTile({ product }: { product: CatalogProduct }) {
+  const { enabled } = useCollegeMode();
+  // In College Mode every card is from the same campus, so repeating its name would only add clutter.
+  const college = !enabled && product.college && typeof product.college === "object" ? product.college.name : undefined;
   return (
     <ProductCard
       id={product._id}
@@ -55,6 +60,7 @@ export function ProductTile({ product }: { product: CatalogProduct }) {
       image={product.images?.[0] || ""}
       stock={availableStock(product)}
       category={product.category?.name}
+      college={college}
     />
   );
 }

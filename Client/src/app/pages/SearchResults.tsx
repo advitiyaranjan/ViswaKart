@@ -3,6 +3,9 @@ import { useState, useEffect } from "react";
 import { productService } from "../../services/productService";
 import { CatalogGrid, CatalogMessage, CatalogPagination, type CatalogProduct } from "../components/CatalogUI";
 import { Button } from "../components/Button";
+import { CollegeEmptyState } from "../components/college/CollegeMode";
+import { usePageResetOnCollegeChange } from "../components/college/usePageResetOnCollegeChange";
+import { useCollegeMode } from "../../context/CollegeModeContext";
 
 const PAGE_SIZE = 20;
 
@@ -16,6 +19,8 @@ export default function SearchResults() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  const { collegeFilter, ready, markUnavailable } = useCollegeMode();
+  usePageResetOnCollegeChange(collegeFilter, searchParams, setSearchParams);
 
   useEffect(() => {
     let current = true;
@@ -26,20 +31,25 @@ export default function SearchResults() {
     }
     setIsLoading(true);
     setError(false);
+    if (!ready) return;
     productService
-      .getProducts({ search: query, page, limit: PAGE_SIZE })
+      .getProducts({ search: query, page, limit: PAGE_SIZE, college: collegeFilter })
       .then((res) => {
         if (!current) return;
         setResults(res.data.products ?? []);
         setTotal(res.data.total ?? 0);
         setPages(Math.max(1, res.data.pages ?? 1));
       })
-      .catch(() => current && setError(true))
+      .catch((err) => {
+        if (!current) return;
+        if (collegeFilter && err?.response?.status === 404) markUnavailable();
+        else setError(true);
+      })
       .finally(() => current && setIsLoading(false));
     return () => {
       current = false;
     };
-  }, [query, page, refresh]);
+  }, [query, page, refresh, collegeFilter, ready, markUnavailable]);
 
   function goToPage(next: number) {
     const params = new URLSearchParams(searchParams);
@@ -71,6 +81,8 @@ export default function SearchResults() {
           message="We couldn't load results. Check your connection and try again."
           onAction={() => setRefresh((value) => value + 1)}
         />
+      ) : !isLoading && results.length === 0 && collegeFilter ? (
+        <CollegeEmptyState filtered />
       ) : !isLoading && results.length === 0 ? (
         <div className="rounded-2xl border border-border bg-white px-5 py-14 text-center">
           <h2 className="mb-2 text-xl font-semibold">No products match “{query}”</h2>
