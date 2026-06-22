@@ -1,10 +1,9 @@
 import { UserProfile } from "@clerk/react";
-import { MapPin, ShoppingBag, HelpCircle, Heart, Truck } from "lucide-react";
+import { MapPin, ShoppingBag, HelpCircle, Heart, Truck, Store } from "lucide-react";
 import AddressesPage from "./profile/AddressesPage";
 import OrdersPage from "./profile/OrdersPage";
 import HelpSupportPage from "./profile/HelpSupportPage";
 import DonateUsPage from "./profile/DonateUsPage";
-import SellProductPage from "./profile/SellProductPage";
 import SellerOrdersPage from "./profile/SellerOrdersPage";
 
 export default function Account() {
@@ -31,10 +30,8 @@ export default function Account() {
           <HelpSupportPage />
         </UserProfile.Page>
 
-        {/* Sell a Product */}
-        <UserProfile.Page label="Sell a Product" url="sell" labelIcon={<ShoppingBag className="w-4 h-4" />}>
-          <SellProductPage />
-        </UserProfile.Page>
+        {/* Selling has its own pages; this opens the seller flow at /sell */}
+        <UserProfile.Link label="Sell your product" url="/sell" labelIcon={<Store className="w-4 h-4" />} />
 
         {/* Donate Us */}
         <UserProfile.Page label="Donate Us" url="donate" labelIcon={<Heart className="w-4 h-4" />}>

@@ -15,8 +15,10 @@ import Wishlist from "./pages/Wishlist";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ErrorBoundary from "./components/ErrorBoundary";
 import Account from "./pages/Account";
+import SellEntry from "./pages/seller/SellEntry";
+import PaymentComplete from "./pages/PaymentComplete";
 
-// The admin area (and its charting library) is loaded only when an admin opens it,
+// The admin area (and its charting library) and the seller pages are loaded only when opened,
 // keeping the storefront bundle small for shoppers on phones.
 const lazyPage = (load: () => Promise<{ default: React.ComponentType }>) => async () => ({ Component: (await load()).default });
 
@@ -42,6 +44,12 @@ export const router = createBrowserRouter([
           { path: "checkout", Component: Checkout },
           { path: "buy-now", Component: BuyNow },
           { path: "account", Component: Account },
+          { path: "payment/complete", Component: PaymentComplete },
+          // Sell flow: /sell routes each user by their server-side seller status; each page re-checks it.
+          { path: "sell", Component: SellEntry },
+          { path: "sell/register", lazy: lazyPage(() => import("./pages/seller/SellerRegister")) },
+          { path: "sell/status", lazy: lazyPage(() => import("./pages/seller/SellerStatusPage")) },
+          { path: "sell/dashboard", lazy: lazyPage(() => import("./pages/seller/SellerDashboard")) },
         ],
       },
     ],
@@ -61,6 +69,7 @@ export const router = createBrowserRouter([
           { path: "orders", lazy: lazyPage(() => import("./pages/admin/OrderManagement")) },
           { path: "users", lazy: lazyPage(() => import("./pages/admin/UserManagement")) },
           { path: "seller-requests", lazy: lazyPage(() => import("./pages/admin/SellerRequests")) },
+          { path: "colleges", lazy: lazyPage(() => import("./pages/admin/CollegeManagement")) },
           { path: "support", lazy: lazyPage(() => import("./pages/admin/SupportMessages")) },
         ],
       },

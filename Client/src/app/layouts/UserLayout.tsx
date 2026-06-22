@@ -27,9 +27,10 @@ import { formatCurrency } from "../../lib/currency";
 import AddressesPage from "../pages/profile/AddressesPage";
 import OrdersPage from "../pages/profile/OrdersPage";
 import HelpSupportPage from "../pages/profile/HelpSupportPage";
-import SellProductPage from "../pages/profile/SellProductPage";
 import SellerOrdersPage from "../pages/profile/SellerOrdersPage";
 import DonateUsPage from "../pages/profile/DonateUsPage";
+import { CollegeModeBar, CollegePickerDialog } from "../components/college/CollegeMode";
+import { useCollegeMode } from "../../context/CollegeModeContext";
 
 const SUPPORT_EMAIL = "advitiyaranjan1@gmail.com";
 // Pages with their own sticky action bar on phones.
@@ -51,6 +52,7 @@ export default function UserLayout() {
   const { isAdmin } = useAuth();
   const { isSignedIn } = useUser();
   const { totalItems } = useCart();
+  const { collegeFilter } = useCollegeMode();
   const { wishlist } = useWishlist();
   const navigate = useNavigate();
   const location = useLocation();
@@ -81,7 +83,7 @@ export default function UserLayout() {
     setSearchError(false);
     const timer = setTimeout(() => {
       productService
-        .getProducts({ search: searchQuery.trim(), limit: 5 })
+        .getProducts({ search: searchQuery.trim(), limit: 5, college: collegeFilter })
         .then((res) => {
           if (!current) return;
           setSearchResults(res.data.products ?? []);
@@ -99,7 +101,7 @@ export default function UserLayout() {
       current = false;
       clearTimeout(timer);
     };
-  }, [searchQuery]);
+  }, [searchQuery, collegeFilter]);
 
   useEffect(() => {
     let current = true;
@@ -231,6 +233,15 @@ export default function UserLayout() {
           </form>
 
           <div className="flex items-center gap-0.5 sm:gap-1.5">
+            <NavLink
+              to="/sell"
+              className={({ isActive }) =>
+                `mr-1 hidden min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition-colors md:inline-flex ${isActive ? "bg-accent text-primary" : "text-foreground hover:bg-accent hover:text-primary"}`
+              }
+            >
+              <Store className="h-4.5 w-4.5" />
+              Sell
+            </NavLink>
             <Link to="/wishlist" aria-label={`Wishlist, ${wishlist.length} saved items`} className="header-action hidden md:inline-flex">
               <Heart className="h-5 w-5" />
               <Badge count={wishlist.length} />
@@ -247,14 +258,14 @@ export default function UserLayout() {
             {isSignedIn ? (
               <div className="flex h-11 min-w-11 items-center justify-center">
                 <UserButton userProfileMode="modal">
+                  <UserButton.MenuItems>
+                    <UserButton.Link label="Sell your product" labelIcon={<Store className="h-4 w-4" />} href="/sell" />
+                  </UserButton.MenuItems>
                   <UserButton.UserProfilePage label="My Orders" url="orders" labelIcon={<ShoppingBag className="h-4 w-4" />}>
                     <OrdersPage />
                   </UserButton.UserProfilePage>
                   <UserButton.UserProfilePage label="My Addresses" url="addresses" labelIcon={<MapPin className="h-4 w-4" />}>
                     <AddressesPage />
-                  </UserButton.UserProfilePage>
-                  <UserButton.UserProfilePage label="Sell a Product" url="sell" labelIcon={<Store className="h-4 w-4" />}>
-                    <SellProductPage />
                   </UserButton.UserProfilePage>
                   <UserButton.UserProfilePage label="Seller Orders" url="seller-orders" labelIcon={<Truck className="h-4 w-4" />}>
                     <SellerOrdersPage />
@@ -298,6 +309,9 @@ export default function UserLayout() {
           </nav>
         )}
       </header>
+      {/* The homepage has its own College Mode card; elsewhere a slim bar explains why results are narrowed. */}
+      {location.pathname !== "/" && <CollegeModeBar />}
+      <CollegePickerDialog />
 
       <main id="main-content" tabIndex={-1} className="flex-1 outline-none">
         <Outlet />
@@ -328,6 +342,9 @@ export default function UserLayout() {
               </Link>
               <Link className="py-2 hover:text-primary" to="/account#/orders">
                 Your orders
+              </Link>
+              <Link className="py-2 font-medium text-primary hover:underline" to="/sell">
+                Sell on ViswaKart
               </Link>
             </div>
           </div>

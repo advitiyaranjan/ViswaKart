@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { ArrowRight, ArrowUpRight, Sparkles, Heart, Search, ShoppingBag, Grid3X3, Loader2, Check } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Sparkles, Heart, Search, ShoppingBag, Grid3X3, Loader2, Check, Store, Camera, BadgeIndianRupee } from "lucide-react";
 import { useState, useEffect, FormEvent } from "react";
 import { Button } from "../components/Button";
 import { CatalogCategory, CatalogProduct, CatalogGrid, CatalogMessage } from "../components/CatalogUI";
@@ -7,6 +7,8 @@ import { ProductImage } from "../components/ProductImage";
 import { productService, categoryService } from "../../services/productService";
 import { formatCurrency } from "../../lib/currency";
 import api from "../../services/api";
+import { CollegeEmptyState, CollegeModeToggle } from "../components/college/CollegeMode";
+import { useCollegeMode } from "../../context/CollegeModeContext";
 
 export default function Homepage() {
   const [products, setProducts] = useState<CatalogProduct[]>([]);
@@ -17,18 +19,23 @@ export default function Homepage() {
   const [email, setEmail] = useState("");
   const [subStatus, setSubStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [subMessage, setSubMessage] = useState("");
+  const { collegeFilter, ready, college, markUnavailable } = useCollegeMode();
 
   useEffect(() => {
     let current = true;
     setLoading(true);
     setError("");
+    // Wait for the saved College Mode preference so the wrong catalogue never flashes first.
+    if (!ready) return;
     productService
-      .getProducts({ sort: "-createdAt", limit: 8 })
+      .getProducts({ sort: "-createdAt", limit: 8, college: collegeFilter })
       .then((res) => {
         if (current) setProducts(res.data.products ?? []);
       })
-      .catch(() => {
-        if (current) setError("We couldn't load the collection. Please try again.");
+      .catch((err) => {
+        if (!current) return;
+        if (collegeFilter && err?.response?.status === 404) markUnavailable();
+        else setError("We couldn't load the collection. Please try again.");
       })
       .finally(() => {
         if (current) setLoading(false);
@@ -42,7 +49,7 @@ export default function Homepage() {
     return () => {
       current = false;
     };
-  }, [refresh]);
+  }, [refresh, collegeFilter, ready, markUnavailable]);
 
   useEffect(() => {
     const reload = () => setRefresh((value) => value + 1);
@@ -84,13 +91,22 @@ export default function Homepage() {
               <p className="mt-5 max-w-md text-base leading-relaxed text-[#526e66]">
                 From daily essentials to your next favourite thing. Find what fits your life, all in one place.
               </p>
-              <Link
-                to="/products"
-                className="mt-7 inline-flex min-h-12 items-center justify-center gap-3 rounded-xl bg-[#173b35] px-6 text-sm font-semibold text-white shadow-sm hover:bg-primary"
-              >
-                Explore the collection
-                <ArrowRight className="h-4 w-4" />
-              </Link>
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+                <Link
+                  to="/products"
+                  className="inline-flex min-h-12 items-center justify-center gap-3 rounded-xl bg-[#173b35] px-6 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary"
+                >
+                  Explore the collection
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+                <Link
+                  to="/sell"
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[#173b35]/20 bg-white/70 px-6 text-sm font-semibold text-[#173b35] transition-colors hover:border-primary/40 hover:bg-white"
+                >
+                  <Store className="h-4 w-4" />
+                  Sell your product
+                </Link>
+              </div>
               <div className="mt-6 flex items-center gap-2 text-xs text-[#526e66]">
                 <Heart className="h-4 w-4" />
                 Find it. Love it. Make it yours.
@@ -137,6 +153,8 @@ export default function Homepage() {
           </div>
         </div>
       </section>
+
+      <CollegeModeToggle />
 
       <section
         aria-label="Shopping made simple"
@@ -188,9 +206,11 @@ export default function Homepage() {
       <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
         <div className="mb-6 flex items-end justify-between gap-4">
           <div>
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">Just landed</p>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">{collegeFilter ? "Just landed on campus" : "Just landed"}</p>
             <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Meet your new favourites</h2>
-            <p className="mt-2 text-sm text-muted-foreground">The latest additions to explore.</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {collegeFilter && college ? `The latest from sellers at ${college.name}.` : "The latest additions to explore."}
+            </p>
           </div>
           <Link to="/products?sort=-createdAt" className="flex min-h-11 shrink-0 items-center gap-1 text-sm font-semibold text-primary">
             <span className="hidden sm:inline">View all</span>
@@ -204,6 +224,8 @@ export default function Homepage() {
             message={error}
             onAction={() => setRefresh((value) => value + 1)}
           />
+        ) : !loading && !products.length && collegeFilter ? (
+          <CollegeEmptyState />
         ) : !loading && !products.length ? (
           <CatalogMessage
             title="Something good is on its way"
@@ -230,6 +252,8 @@ export default function Homepage() {
           </div>
         </section>
       )}
+
+      <SellBanner />
 
       <section className="mx-auto max-w-7xl px-4 pt-12 sm:px-6 lg:px-8">
         <div className="grid gap-7 rounded-[1.5rem] bg-[#183e37] p-6 text-white sm:p-10 lg:grid-cols-2 lg:items-center">
@@ -281,5 +305,53 @@ export default function Homepage() {
         </div>
       </section>
     </div>
+  );
+}
+
+/** Seller recruitment card. /sell routes each visitor (signed out, applicant, seller) to the right step. */
+function SellBanner() {
+  return (
+    <section aria-labelledby="sell-banner-title" className="mx-auto max-w-7xl px-4 pt-12 sm:px-6 lg:px-8">
+      <div className="group relative overflow-hidden rounded-[1.5rem] border border-[#cfe0d8] bg-gradient-to-br from-white to-[#edf5f0] p-6 sm:p-10">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-primary/5 transition-transform duration-700 group-hover:scale-110" aria-hidden="true" />
+        <div className="relative grid gap-8 lg:grid-cols-[1.2fr_1fr] lg:items-center">
+          <div>
+            <span className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-white shadow-sm">
+              <Store className="h-6 w-6" strokeWidth={1.7} />
+            </span>
+            <h2 id="sell-banner-title" className="text-2xl font-semibold tracking-tight text-[#173b35] sm:text-3xl">
+              Have something to sell?
+            </h2>
+            <p className="mt-3 max-w-md text-sm leading-relaxed text-[#526e66] sm:text-base">
+              Join our seller community, showcase your products, and reach more customers.
+            </p>
+            <Link
+              to="/sell"
+              className="mt-6 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-primary px-6 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#173b35]"
+            >
+              Start selling
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+            </Link>
+          </div>
+          <ul className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+            {[
+              { icon: Camera, title: "List in minutes", text: "Add photos, a price and a short description." },
+              { icon: BadgeIndianRupee, title: "Set your own price", text: "You decide what it's worth and how many to sell." },
+              { icon: ShoppingBag, title: "Manage orders easily", text: "Track every order from your seller dashboard." },
+            ].map(({ icon: Icon, title, text }) => (
+              <li key={title} className="flex items-start gap-3 rounded-xl border border-white bg-white/80 p-4">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#edf5f0] text-primary">
+                  <Icon className="h-4.5 w-4.5" strokeWidth={1.7} />
+                </span>
+                <span>
+                  <span className="block text-sm font-semibold">{title}</span>
+                  <span className="text-xs text-muted-foreground">{text}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
   );
 }

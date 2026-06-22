@@ -12,6 +12,7 @@ import {
   ChevronRight,
   ShieldCheck,
   UserRoundCheck,
+  GraduationCap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
@@ -24,7 +25,8 @@ const navItems = [
   { path: "/admin/products", label: "Products", icon: Package },
   { path: "/admin/categories", label: "Categories", icon: FolderTree },
   { path: "/admin/users", label: "Customers & team", icon: Users },
-  { path: "/admin/seller-requests", label: "Seller requests", icon: UserRoundCheck },
+  { path: "/admin/seller-requests", label: "Sellers", icon: UserRoundCheck },
+  { path: "/admin/colleges", label: "Colleges", icon: GraduationCap },
   { path: "/admin/support", label: "Support inbox", icon: MessageCircle },
 ];
 
