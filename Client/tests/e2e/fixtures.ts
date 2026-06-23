@@ -1,6 +1,10 @@
 import { test as base, expect, type Page } from "@playwright/test";
 
 const category = { _id: "c".repeat(24), name: "Books", slug: "books", productCount: 3 };
+export const COLLEGES = [
+  { _id: "d".repeat(24), name: "ABV-IIITM Gwalior", city: "Gwalior", state: "Madhya Pradesh", isActive: true },
+  { _id: "e".repeat(24), name: "IIT Madras", city: "Chennai", state: "Tamil Nadu", isActive: true },
+];
 
 function product(index: number, overrides: Record<string, unknown> = {}) {
   return {
@@ -24,6 +28,8 @@ function product(index: number, overrides: Record<string, unknown> = {}) {
     sold: false,
     isActive: true,
     category,
+    // Even products belong to IIITM, every third odd one to IIT Madras, the rest to no college.
+    college: index % 2 === 0 ? COLLEGES[0] : index === 3 ? COLLEGES[1] : null,
     ...overrides,
   };
 }
@@ -38,11 +44,23 @@ export async function mockApi(page: Page) {
     const json = (body: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 
     if (path === "/categories") return json({ success: true, categories: [category] });
+    if (path === "/colleges") {
+      const search = (url.searchParams.get("search") || "").toLowerCase();
+      const colleges = COLLEGES.filter((c) => !search || `${c.name} ${c.city}`.toLowerCase().includes(search));
+      return json({ success: true, total: colleges.length, colleges });
+    }
+    const collegeMatch = path.match(/^\/colleges\/([^/]+)$/);
+    if (collegeMatch) {
+      const found = COLLEGES.find((c) => c._id === collegeMatch[1]);
+      return found ? json({ success: true, college: found }) : json({ success: false, message: "College not found" }, 404);
+    }
     if (path === "/products") {
       let list = PRODUCTS;
       const search = url.searchParams.get("search");
       if (search) list = list.filter((item) => item.name.toLowerCase().includes(search.toLowerCase()));
       if (url.searchParams.get("inStock") === "true") list = list.filter((item) => item.stock > 0);
+      const college = url.searchParams.get("college");
+      if (college) list = list.filter((item) => item.college?._id === college);
       const limit = Number(url.searchParams.get("limit") || 12);
       return json({ success: true, total: list.length, page: 1, pages: 1, products: list.slice(0, limit) });
     }
