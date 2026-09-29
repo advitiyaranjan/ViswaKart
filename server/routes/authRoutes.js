@@ -7,6 +7,8 @@ const {
 const { protect } = require("../middleware/authMiddleware");
 const { sendLoginAlertEmail } = require("../utils/email");
 const User = require("../models/User");
+const Product = require("../models/Product");
+const { fail } = require("../utils/commerce");
 
 // Profile (Clerk-authenticated)
 router.get("/me", protect, getMe);
@@ -19,8 +21,7 @@ router.delete("/me/addresses/:addrId", protect, deleteAddress);
 
 // Login alert email (called client-side after Clerk sign-in)
 router.post("/login-alert", protect, async (req, res) => {
-  const { email, name } = req.body;
-  if (email) sendLoginAlertEmail(email, name || "there").catch(() => {});
+  if (req.user.email) sendLoginAlertEmail(req.user.email, req.user.name || "there").catch(() => {});
   res.json({ success: true });
 });
 
@@ -34,6 +35,7 @@ router.get("/wishlist", protect, async (req, res) => {
 
 // POST /api/auth/wishlist/:productId — add
 router.post("/wishlist/:productId", protect, async (req, res) => {
+  if (!/^[a-f\d]{24}$/i.test(req.params.productId) || !await Product.exists({ _id: req.params.productId, isActive: true })) fail("Product not found", 404);
   await User.findByIdAndUpdate(req.user.id, {
     $addToSet: { wishlist: req.params.productId },
   });
@@ -52,8 +54,10 @@ router.delete("/wishlist/:productId", protect, async (req, res) => {
 router.put("/wishlist/sync", protect, async (req, res) => {
   const { ids } = req.body; // array of product id strings
   if (Array.isArray(ids) && ids.length > 0) {
+    if (ids.length > 200 || ids.some((id) => typeof id !== "string" || !/^[a-f\d]{24}$/i.test(id))) fail("Invalid wishlist product IDs");
+    const products = await Product.find({ _id: { $in: ids }, isActive: true }).select("_id").lean();
     await User.findByIdAndUpdate(req.user.id, {
-      $addToSet: { wishlist: { $each: ids } },
+      $addToSet: { wishlist: { $each: products.map((product) => product._id) } },
     });
   }
   const user = await User.findById(req.user.id).select("wishlist").lean();

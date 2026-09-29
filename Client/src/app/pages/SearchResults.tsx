@@ -1,89 +1,91 @@
 import { useSearchParams, Link } from "react-router";
-import { Search } from "lucide-react";
-import { ProductCard } from "../components/ProductCard";
-import { EmptyState, ProductCardSkeleton } from "../components/LoadingStates";
-import { productService } from "../../services/productService";
 import { useState, useEffect } from "react";
+import { productService } from "../../services/productService";
+import { CatalogGrid, CatalogMessage, CatalogPagination, type CatalogProduct } from "../components/CatalogUI";
+import { Button } from "../components/Button";
 
-interface Product {
-  _id: string;
-  name: string;
-  price: number;
-  images: string[];
-  ratings: number;
-  numReviews: number;
-  category: { name: string };
-  stock: number;
-}
+const PAGE_SIZE = 20;
 
 export default function SearchResults() {
-  const [searchParams] = useSearchParams();
-  const query = searchParams.get("q") || "";
-  const [results, setResults] = useState<Product[]>([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const query = (searchParams.get("q") || "").trim();
+  const page = Math.max(1, Math.floor(Number(searchParams.get("page")) || 1));
+  const [results, setResults] = useState<CatalogProduct[]>([]);
   const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const [refresh, setRefresh] = useState(0);
 
   useEffect(() => {
-    if (!query) return;
+    let current = true;
+    if (!query) {
+      setResults([]);
+      setTotal(0);
+      return;
+    }
     setIsLoading(true);
+    setError(false);
     productService
-      .getProducts({ search: query, limit: 20 })
+      .getProducts({ search: query, page, limit: PAGE_SIZE })
       .then((res) => {
-        setResults(res.data.products);
-        setTotal(res.data.total);
+        if (!current) return;
+        setResults(res.data.products ?? []);
+        setTotal(res.data.total ?? 0);
+        setPages(Math.max(1, res.data.pages ?? 1));
       })
-      .finally(() => setIsLoading(false));
-  }, [query]);
+      .catch(() => current && setError(true))
+      .finally(() => current && setIsLoading(false));
+    return () => {
+      current = false;
+    };
+  }, [query, page, refresh]);
+
+  function goToPage(next: number) {
+    const params = new URLSearchParams(searchParams);
+    if (next > 1) params.set("page", String(next));
+    else params.delete("page");
+    setSearchParams(params);
+  }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">
-          Search Results for "{query}"
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">Search</p>
+        <h1 className="break-words text-3xl font-semibold tracking-tight sm:text-4xl">
+          {query ? `Results for “${query}”` : "Search the collection"}
         </h1>
-        {!isLoading && (
-          <p className="text-muted-foreground">
-            Found {total} {total === 1 ? "result" : "results"}
+        {query && !isLoading && !error && (
+          <p aria-live="polite" className="mt-2 text-sm text-muted-foreground">
+            {total} {total === 1 ? "product" : "products"} found
           </p>
         )}
       </div>
 
-      {isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[...Array(4)].map((_, i) => <ProductCardSkeleton key={i} />)}
-        </div>
-      ) : results.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {results.map((product) => (
-            <ProductCard
-              key={product._id}
-              id={product._id}
-              name={product.name}
-              price={product.price}
-              discount={(product as any).discount}
-              seller={(product as any).seller}
-              sellerEmail={(product as any).sellerEmail}
-              image={product.images[0]}
-              rating={product.ratings}
-              reviews={product.numReviews}
-              category={product.category?.name}
-              stock={product.stock}
-            />
-          ))}
+      {!query ? (
+        <CatalogMessage title="What are you looking for?" message="Type a product name in the search bar above." />
+      ) : error ? (
+        <CatalogMessage
+          error
+          title="Search is taking a moment"
+          message="We couldn't load results. Check your connection and try again."
+          onAction={() => setRefresh((value) => value + 1)}
+        />
+      ) : !isLoading && results.length === 0 ? (
+        <div className="rounded-2xl border border-border bg-white px-5 py-14 text-center">
+          <h2 className="mb-2 text-xl font-semibold">No products match “{query}”</h2>
+          <p className="mx-auto mb-5 max-w-md text-sm text-muted-foreground">
+            Check the spelling, try a shorter name, or browse the full collection.
+          </p>
+          <Link to="/products">
+            <Button variant="outline">Browse all products</Button>
+          </Link>
         </div>
       ) : (
-        <EmptyState
-          icon={<Search className="w-16 h-16" />}
-          title="No products found"
-          description={`We couldn't find any products matching "${query}". Try searching for something else.`}
-          action={
-            <Link to="/products">
-              <button className="px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors">
-                Browse All Products
-              </button>
-            </Link>
-          }
-        />
+        <>
+          <CatalogGrid products={results} loading={isLoading} skeletons={8} />
+          {!isLoading && <CatalogPagination page={page} pages={pages} onChange={goToPage} />}
+        </>
       )}
     </div>
   );

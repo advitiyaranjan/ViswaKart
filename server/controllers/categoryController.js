@@ -1,6 +1,7 @@
 const Category = require("../models/Category");
 const Product = require("../models/Product");
 const { validationResult } = require("express-validator");
+const { fail } = require("../utils/commerce");
 
 // @desc    Get all categories
 // @route   GET /api/categories
@@ -13,7 +14,7 @@ exports.getCategories = async (req, res) => {
     { $match: { isActive: true } },
     { $group: { _id: "$category", count: { $sum: 1 } } },
   ]);
-  const countMap = Object.fromEntries(counts.map((c) => [c._id.toString(), c.count]));
+  const countMap = Object.fromEntries(counts.filter((c) => c._id).map((c) => [c._id.toString(), c.count]));
 
   const result = categories.map((cat) => ({
     ...cat.toObject(),
@@ -52,7 +53,8 @@ exports.createCategory = async (req, res) => {
     return res.status(400).json({ success: false, message: "Category already exists" });
   }
 
-  const category = await Category.create(req.body);
+  const { name, description, image } = req.body;
+  const category = await Category.create({ name, description, image });
   res.status(201).json({ success: true, category });
 };
 
@@ -60,15 +62,16 @@ exports.createCategory = async (req, res) => {
 // @route   PUT /api/categories/:id
 // @access  Admin
 exports.updateCategory = async (req, res) => {
-  const category = await Category.findByIdAndUpdate(req.params.id, req.body, {
-    new: true,
-    runValidators: true,
-  });
+  const category = await Category.findById(req.params.id);
 
   if (!category) {
     return res.status(404).json({ success: false, message: "Category not found" });
   }
 
+  for (const key of ["name", "description", "image"]) {
+    if (req.body[key] !== undefined) category[key] = req.body[key];
+  }
+  await category.save();
   res.status(200).json({ success: true, category });
 };
 
@@ -76,6 +79,7 @@ exports.updateCategory = async (req, res) => {
 // @route   DELETE /api/categories/:id
 // @access  Admin
 exports.deleteCategory = async (req, res) => {
+  if (await Product.exists({ category: req.params.id, isActive: true })) fail("Move or archive this category's active products before deleting it", 409);
   const category = await Category.findByIdAndUpdate(
     req.params.id,
     { isActive: false },

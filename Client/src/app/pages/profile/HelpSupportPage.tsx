@@ -26,12 +26,12 @@ const FAQS: FAQ[] = [
   {
     topic: "Orders",
     q: "How do I track my order?",
-    a: "Go to Account → My Orders to see real-time status updates for all your orders. You'll also receive email notifications at each stage.",
+    a: "Go to Account → My Orders to see the latest status of every order and each item in it. We also email you when your order is placed.",
   },
   {
     topic: "Orders",
     q: "Can I cancel or modify my order?",
-    a: "Orders can be cancelled within 1 hour of placement. After that, please contact support. Modifications are not supported once the order is confirmed.",
+    a: "Yes — open Account → My Orders and choose Cancel order any time before it ships. Once an order has shipped it can't be cancelled; contact support instead. Orders can't be edited after they're placed, but you can cancel and order again.",
   },
   {
     topic: "Returns & Refunds",
@@ -45,13 +45,18 @@ const FAQS: FAQ[] = [
   },
   {
     topic: "Payments",
-    q: "Is my payment information secure?",
-    a: "Yes. All payments are processed through Stripe with 256-bit SSL encryption. We never store your card details on our servers.",
+    q: "How do I pay?",
+    a: "All orders are cash on delivery: you pay when your order arrives. We never ask for your card details.",
   },
   {
     topic: "Shipping",
     q: "Do you offer free shipping?",
-    a: "Yes! Orders above " + formatCurrency(50) + " qualify for free standard shipping. Express and overnight options are available at an additional cost.",
+    a:
+      "Yes. Standard delivery (5–7 business days) is always free. Express (" +
+      formatCurrency(12.99) +
+      ", 2–3 business days) and overnight (" +
+      formatCurrency(24.99) +
+      ") are available at checkout.",
   },
   {
     topic: "Orders",
@@ -60,8 +65,8 @@ const FAQS: FAQ[] = [
   },
   {
     topic: "Payments",
-    q: "What payment methods do you accept?",
-    a: "We accept all major credit/debit cards (Visa, Mastercard, Amex), and digital wallets supported by Stripe.",
+    q: "Can I pay by card or UPI?",
+    a: "Not yet. For now every order is cash on delivery, so there's nothing to pay until your order arrives.",
   },
 ];
 
@@ -113,9 +118,7 @@ export default function HelpSupportPage() {
     <div className="space-y-6 py-2">
       <div>
         <h2 className="text-xl font-bold text-foreground">Help & Support</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          Find answers to common questions or get in touch with our team.
-        </p>
+        <p className="text-sm text-muted-foreground mt-1">Find answers to common questions or get in touch with our team.</p>
       </div>
 
       {/* Quick links */}
@@ -144,14 +147,9 @@ export default function HelpSupportPage() {
       {/* FAQs */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-semibold">
-            {activeTopic ? `FAQs: ${activeTopic}` : "Frequently Asked Questions"}
-          </p>
+          <p className="text-sm font-semibold">{activeTopic ? `FAQs: ${activeTopic}` : "Frequently Asked Questions"}</p>
           {activeTopic && (
-            <button
-              onClick={() => setActiveTopic(null)}
-              className="text-xs text-primary hover:underline"
-            >
+            <button onClick={() => setActiveTopic(null)} className="text-xs text-primary hover:underline">
               Show all
             </button>
           )}
@@ -171,9 +169,7 @@ export default function HelpSupportPage() {
                 )}
               </button>
               {openFaq === i && (
-                <div className="px-4 pb-3 text-sm text-muted-foreground border-t border-border pt-3 bg-slate-50/50">
-                  {faq.a}
-                </div>
+                <div className="px-4 pb-3 text-sm text-muted-foreground border-t border-border pt-3 bg-slate-50/50">{faq.a}</div>
               )}
             </div>
           ))}

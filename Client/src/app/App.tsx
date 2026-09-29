@@ -1,72 +1,11 @@
 import { RouterProvider } from "react-router";
-import { useAuth, useUser } from "@clerk/react";
-import { useEffect } from "react";
+import { Toaster } from "sonner";
 import { router } from "./routes";
-import api from "../services/api";
-
-// Bridge Clerk's getToken to the axios interceptor
-function ClerkTokenBridge() {
-  const { getToken } = useAuth();
-  useEffect(() => {
-    (window as any).__clerkGetToken = getToken;
-    return () => { delete (window as any).__clerkGetToken; };
-  }, [getToken]);
-  return null;
-}
-
-// Fire login alert email only on actual sign-in (not refresh or new tab)
-function LoginEmailBridge() {
-  const { isSignedIn } = useAuth();
-  const { user } = useUser();
-
-  useEffect(() => {
-    if (isSignedIn === undefined) return; // Clerk still loading
-
-    if (isSignedIn && user) {
-      const key = `lga_${user.id}`; // lga = login_alert
-      if (localStorage.getItem(key)) return; // already sent since last logout
-      localStorage.setItem(key, "1");
-      const email = user.primaryEmailAddress?.emailAddress;
-      const name = user.fullName || user.firstName || email || "there";
-      if (email) {
-        api.post("/auth/login-alert", { email, name }).catch(() => {});
-      }
-    }
-
-    if (isSignedIn === false && user === null) {
-      // User signed out — clear all lga_ flags so next login fires the email
-      Object.keys(localStorage)
-        .filter((k) => k.startsWith("lga_"))
-        .forEach((k) => localStorage.removeItem(k));
-    }
-  }, [isSignedIn, user]);
-
-  return null;
-}
-
-// Remove Clerk's "Development mode" / "Secured by Clerk" footer badge from modals
-function HideClerkBadge() {
-  useEffect(() => {
-    const remove = () => {
-      document.querySelectorAll(".cl-footer, [class*='cl-'][class*='footer']").forEach((el) => {
-        (el as HTMLElement).style.display = "none";
-      });
-    };
-    remove();
-    const observer = new MutationObserver(remove);
-    observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
-  }, []);
-  return null;
-}
-
 export default function App() {
   return (
     <>
-      <HideClerkBadge />
-      <ClerkTokenBridge />
-      <LoginEmailBridge />
       <RouterProvider router={router} />
+      <Toaster position="top-center" richColors closeButton />
     </>
   );
 }

@@ -41,19 +41,16 @@ export type GuestAddressFormValues = z.infer<typeof guestAddressSchema>;
 export const productSchema = z.object({
   name: z.string().min(2, "Product name must be at least 2 characters"),
   category: z.string().min(1, "Category is required"),
-  price: z
-    .number({ invalid_type_error: "Price must be a number" })
-    .min(0.01, "Price must be greater than 0")
-    .max(1_000_000, "Price is too high"),
+  price: z.number({ error: "Price must be a number" }).min(0.01, "Price must be greater than 0").max(1_000_000, "Price is too high"),
   stock: z
-    .number({ invalid_type_error: "Stock must be a number" })
+    .number({ error: "Stock must be a number" })
     .int("Stock must be a whole number")
     .min(0, "Stock cannot be negative")
     .max(100_000, "Stock value is too high"),
   description: z.string().optional(),
   images: z.array(z.string()).optional(),
   discount: z
-    .number({ invalid_type_error: "Discount must be a number" })
+    .number({ error: "Discount must be a number" })
     .min(0, "Discount cannot be negative")
     .max(100, "Discount cannot exceed 100")
     .optional(),
@@ -62,10 +59,7 @@ export const productSchema = z.object({
 export type ProductFormValues = z.infer<typeof productSchema>;
 
 export const categorySchema = z.object({
-  name: z
-    .string()
-    .min(2, "Category name must be at least 2 characters")
-    .max(50, "Category name is too long"),
+  name: z.string().min(2, "Category name must be at least 2 characters").max(50, "Category name is too long"),
   description: z.string().optional(),
 });
 

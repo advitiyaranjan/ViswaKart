@@ -1,415 +1,283 @@
 import { Link } from "react-router";
-import { ChevronRight, TrendingUp, Zap, ShieldCheck, Truck, RotateCcw, Headphones, Loader2, CheckCircle2 } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Sparkles, Heart, Search, ShoppingBag, Grid3X3, Loader2, Check } from "lucide-react";
+import { useState, useEffect, FormEvent } from "react";
 import { Button } from "../components/Button";
-import { ProductCard } from "../components/ProductCard";
-import { productService, getCachedProductsData } from "../../services/productService";
-import { useState, useEffect } from "react";
-import { motion } from "motion/react";
+import { CatalogCategory, CatalogProduct, CatalogGrid, CatalogMessage } from "../components/CatalogUI";
+import { ProductImage } from "../components/ProductImage";
+import { productService, categoryService } from "../../services/productService";
 import { formatCurrency } from "../../lib/currency";
-
-function seededDiscount(id: string) {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (Math.imul(31, h) + id.charCodeAt(i)) | 0;
-  return 14 + (Math.abs(h) % 67);
-}
-
-interface Product {
-  _id: string;
-  name: string;
-  price: number;
-  images: string[];
-  ratings: number;
-  numReviews: number;
-  category: { name: string };
-  stock: number;
-  discount?: number;
-  seller?: string;
-  sellerEmail?: string;
-  originalPrice?: number;
-}
+import api from "../../services/api";
 
 export default function Homepage() {
-  const initialFeaturedCache = getCachedProductsData({ sort: "-createdAt", limit: 4 });
-  const initialTrendingCache = getCachedProductsData({ sort: "-ratings", limit: 12 });
-  const initialFeaturedProducts: Product[] = initialFeaturedCache?.products ?? [];
-  const initialFeaturedIds = new Set(initialFeaturedProducts.map((p) => p._id));
-  const initialTrendingProducts: Product[] = (initialTrendingCache?.products ?? []).filter((p: Product) => !initialFeaturedIds.has(p._id)).slice(0, 4);
-  const [featuredProducts, setFeaturedProducts] = useState<Product[]>(initialFeaturedProducts);
-  const [trendingProducts, setTrendingProducts] = useState<Product[]>(initialTrendingProducts);
-  const [productsLoading, setProductsLoading] = useState(() => !(initialFeaturedCache || initialTrendingCache));
-
-  // Subscribe state
+  const [products, setProducts] = useState<CatalogProduct[]>([]);
+  const [categories, setCategories] = useState<CatalogCategory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [refresh, setRefresh] = useState(0);
   const [email, setEmail] = useState("");
   const [subStatus, setSubStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [subMessage, setSubMessage] = useState("");
 
   useEffect(() => {
-    if (!initialFeaturedCache && !initialTrendingCache) setProductsLoading(true);
-    Promise.all([
-      // Show newest products in the hero area (new arrivals)
-      productService.getProducts({ sort: "-createdAt", limit: 4 }),
-      productService.getProducts({ sort: "-ratings", limit: 12 }),
-    ])
-      .then(([featuredRes, trendingRes]) => {
-        const featured: Product[] = featuredRes.data.products;
-        setFeaturedProducts(featured);
-        const featuredIds = new Set(featured.map((p) => p._id));
-        const unique = trendingRes.data.products.filter(
-          (p: Product) => !featuredIds.has(p._id)
-        );
-        setTrendingProducts(unique.slice(0, 4));
+    let current = true;
+    setLoading(true);
+    setError("");
+    productService
+      .getProducts({ sort: "-createdAt", limit: 8 })
+      .then((res) => {
+        if (current) setProducts(res.data.products ?? []);
       })
-      .finally(() => setProductsLoading(false));
-  }, []);
-
-  // Listen for newly created products (optimistic update)
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const ev = e as CustomEvent<Product>;
-      if (!ev?.detail) return;
-      const prod = ev.detail;
-      setFeaturedProducts((prev) => {
-        const exists = prev.find((p) => p._id === prod._id);
-        if (exists) return prev;
-        return [prod, ...prev].slice(0, 4);
+      .catch(() => {
+        if (current) setError("We couldn't load the collection. Please try again.");
+      })
+      .finally(() => {
+        if (current) setLoading(false);
       });
-      setTrendingProducts((prev) => {
-        const exists = prev.find((p) => p._id === prod._id);
-        if (exists) return prev;
-        return [prod, ...prev].slice(0, 4);
-      });
+    categoryService
+      .getCategories()
+      .then((res) => {
+        if (current) setCategories(res.data.categories ?? []);
+      })
+      .catch(() => {});
+    return () => {
+      current = false;
     };
-    window.addEventListener('app:productCreated', handler as EventListener);
-    return () => window.removeEventListener('app:productCreated', handler as EventListener);
+  }, [refresh]);
+
+  useEffect(() => {
+    const reload = () => setRefresh((value) => value + 1);
+    window.addEventListener("app:productCreated", reload);
+    return () => window.removeEventListener("app:productCreated", reload);
   }, []);
 
-  const handleSubscribe = async () => {
-    const trimmed = email.trim();
-    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-      setSubMessage("Please enter a valid email address.");
-      setSubStatus("error");
-      return;
-    }
+  async function subscribe(event: FormEvent) {
+    event.preventDefault();
+    if (subStatus === "loading") return;
     setSubStatus("loading");
     setSubMessage("");
     try {
-      await import("../../services/api").then(({ default: api }) =>
-        api.post("/newsletter/subscribe", { email: trimmed })
-      );
+      await api.post("/newsletter/subscribe", { email: email.trim() });
       setSubStatus("success");
-      setSubMessage("You're subscribed! Check your inbox for a welcome email.");
+      setSubMessage("You're on the list. Thanks for subscribing!");
       setEmail("");
     } catch {
       setSubStatus("error");
-      setSubMessage("Something went wrong. Please try again.");
+      setSubMessage("We couldn't subscribe you right now. Please try again.");
     }
-  };
+  }
 
+  const heroProduct = products[0];
   return (
-    <div className="w-full">
-      {/* Hero Section */}
-      <section className="bg-gradient-to-br from-slate-900 via-indigo-950 to-violet-900 text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-center py-10 md:py-14">
-            {/* Left */}
-            <div>
-              <motion.span
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="inline-block bg-amber-400/20 text-amber-300 border border-amber-400/30 text-xs font-semibold px-3 py-1 rounded-full mb-4 tracking-wider uppercase"
-              >
-                🔥 New arrivals · Free shipping over {formatCurrency(50)}
-              </motion.span>
-              <motion.h1
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.05 }}
-                className="text-4xl md:text-5xl font-extrabold leading-tight mb-4"
-              >
-                Shop Smarter,<br />
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400">
-                  Live Better.
-                </span>
-              </motion.h1>
-              <motion.p
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="text-white/70 text-base md:text-lg mb-6 max-w-md"
-              >
-                Thousands of products across every category — delivered to your door with unbeatable prices.
-              </motion.p>
-              <motion.div
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.15 }}
-                className="flex flex-wrap gap-3"
-              >
-                <Link to="/products">
-                  <Button size="lg" className="bg-amber-400 hover:bg-amber-300 text-slate-900 font-bold shadow-lg shadow-amber-400/30">
-                    Shop Now
-                    <ChevronRight className="w-5 h-5 ml-1" />
-                  </Button>
-                </Link>
-                <Link to="/products">
-                  <Button variant="secondary" size="lg" className="bg-white text-slate-900 hover:bg-slate-100 font-semibold">
-                    Explore All Products
-                  </Button>
-                </Link>
-                <Link to="/products?sort=-ratings">
-                  <Button variant="outline" size="lg" className="border-white/30 text-white hover:bg-white/10">
-                    Top Rated
-                  </Button>
-                </Link>
-              </motion.div>
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.3 }}
-                className="mt-8 flex flex-wrap gap-4"
-              >
-                {[
-                  { icon: Truck, label: "Free Delivery" },
-                  { icon: RotateCcw, label: "Easy Returns" },
-                  { icon: ShieldCheck, label: "Secure Payment" },
-                ].map(({ icon: Icon, label }) => (
-                  <div key={label} className="flex items-center gap-2 text-white/60 text-sm">
-                    <Icon className="w-4 h-4 text-amber-400" />
-                    {label}
-                  </div>
-                ))}
-              </motion.div>
-            </div>
-
-            {/* Right — product preview cards */}
-            <motion.div
-              initial={{ opacity: 0, x: 30 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.1 }}
-              className="hidden lg:grid grid-cols-2 gap-4"
-            >
-              {featuredProducts.slice(0, 4).map((product, i) => {
-                const discountPctHero = (product.discount !== undefined && product.discount !== null)
-                  ? Math.round(Number(product.discount))
-                  : (product.originalPrice !== undefined && product.originalPrice !== null)
-                    ? Math.round(((Number(product.originalPrice) - Number(product.price)) / Number(product.originalPrice)) * 100)
-                    : (product.seller || product.sellerEmail ? 0 : seededDiscount(product._id));
-
-                // Determine MRP and final display price.
-                let mrpHero = 0;
-                let displayPrice = 0;
-                if (product.originalPrice !== undefined && product.originalPrice !== null) {
-                  mrpHero = Number(product.originalPrice);
-                  displayPrice = discountPctHero > 0 ? Number((mrpHero * (1 - discountPctHero / 100)).toFixed(2)) : mrpHero;
-                } else if ((product.discount !== undefined && product.discount !== null) || product.seller || product.sellerEmail) {
-                  // Seller-provided listing: treat stored `price` as MRP
-                  mrpHero = Number(product.price || 0);
-                  displayPrice = discountPctHero > 0 ? Number((mrpHero * (1 - discountPctHero / 100)).toFixed(2)) : mrpHero;
-                } else {
-                  // Public/admin listing: stored `price` is the final price
-                  displayPrice = Number(product.price) || 0;
-                  mrpHero = discountPctHero > 0 ? Number((displayPrice / (1 - discountPctHero / 100)).toFixed(2)) : displayPrice;
-                }
-
-                return (
-                  <motion.div
-                    key={product._id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.15 + i * 0.07 }}
-                  >
-                    <Link to={`/products/${product._id}`}>
-                      <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-xl p-3 hover:bg-white/15 transition-colors group">
-                        <div className="aspect-video rounded-lg overflow-hidden bg-white/5 mb-2 relative">
-                          <img
-                            src={product.images[0]}
-                            alt={product.name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            onError={(e) => { (e.target as HTMLImageElement).src = "/placeholder.png"; }}
-                          />
-                          {discountPctHero > 0 && (
-                            <span className="absolute top-1.5 left-1.5 bg-green-500 text-white text-xs font-bold px-1.5 py-0.5 rounded">
-                              {discountPctHero}% off
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-white text-xs font-semibold truncate">{product.name}</p>
-                        <div className="flex items-baseline gap-1.5">
-                          <p className="text-amber-400 text-sm font-bold">{formatCurrency(displayPrice)}</p>
-                          {mrpHero > displayPrice && (
-                            <p className="text-white/40 text-xs line-through">{formatCurrency(mrpHero)}</p>
-                          )}
-                        </div>
-                      </div>
-                    </Link>
-                  </motion.div>
-                );
-              })}
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* Value Props Bar */}
-      <section className="bg-slate-900 text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center text-sm font-medium">
-            {[
-              { icon: Truck, text: `Free Shipping ${formatCurrency(50)}+` },
-              { icon: RotateCcw, text: "30-Day Returns" },
-              { icon: ShieldCheck, text: "Secure Checkout" },
-              { icon: Headphones, text: "24/7 Support" },
-            ].map(({ icon: Icon, text }) => (
-              <div key={text} className="flex items-center justify-center gap-2">
-                <Icon className="w-4 h-4 opacity-80" />
-                <span className="opacity-90">{text}</span>
+    <div>
+      <section className="mx-auto max-w-7xl px-4 pt-5 sm:px-6 lg:px-8 lg:pt-7">
+        <div className="store-hero relative overflow-hidden rounded-[1.75rem] bg-[#e5eeea]">
+          <div className="relative grid items-center gap-8 p-6 sm:p-10 lg:grid-cols-[1.05fr_1fr] lg:gap-12 lg:p-14">
+            <div className="relative z-10">
+              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-white/50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.15em] text-primary">
+                <Sparkles className="h-3.5 w-3.5" />A little discovery. Every day.
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Featured Products */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <Zap className="w-5 h-5 text-amber-500" />
-              <h2 className="text-2xl font-bold">Featured Products</h2>
+              <h1 className="max-w-xl text-[2.6rem] font-semibold leading-[1.08] tracking-[-0.045em] text-[#173b35] sm:text-5xl lg:text-[3.75rem]">
+                Good finds.
+                <br />
+                Great everyday<span className="text-primary">.</span>
+              </h1>
+              <p className="mt-5 max-w-md text-base leading-relaxed text-[#526e66]">
+                From daily essentials to your next favourite thing. Find what fits your life, all in one place.
+              </p>
+              <Link
+                to="/products"
+                className="mt-7 inline-flex min-h-12 items-center justify-center gap-3 rounded-xl bg-[#173b35] px-6 text-sm font-semibold text-white shadow-sm hover:bg-primary"
+              >
+                Explore the collection
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+              <div className="mt-6 flex items-center gap-2 text-xs text-[#526e66]">
+                <Heart className="h-4 w-4" />
+                Find it. Love it. Make it yours.
+              </div>
             </div>
-            <p className="text-muted-foreground text-sm">Handpicked items just for you</p>
-          </div>
-          <Link to="/products">
-            <Button variant="ghost" size="md">
-              View All <ChevronRight className="w-4 h-4 ml-1" />
-            </Button>
-          </Link>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {productsLoading
-            ? Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="rounded-xl border bg-slate-100 animate-pulse">
-                  <div className="aspect-square bg-slate-200 rounded-t-xl" />
-                  <div className="p-4 space-y-2">
-                    <div className="h-4 bg-slate-200 rounded w-3/4" />
-                    <div className="h-3 bg-slate-200 rounded w-1/2" />
-                    <div className="h-5 bg-slate-200 rounded w-1/3" />
+            <div className="relative">
+              {heroProduct ? (
+                <Link
+                  to={`/products/${heroProduct._id}`}
+                  className="group relative block overflow-hidden rounded-2xl border border-white/70 bg-white/80 p-4 shadow-[0_16px_60px_-24px_rgba(20,60,50,0.3)] sm:p-5"
+                >
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">Fresh in the collection</span>
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-white">
+                      <ArrowUpRight className="h-4 w-4" />
+                    </span>
                   </div>
+                  <div className="relative aspect-[16/10] rounded-xl bg-[#f5f7f5] p-5 sm:aspect-[4/3]">
+                    <ProductImage
+                      src={heroProduct.images?.[0]}
+                      alt={heroProduct.name}
+                      fetchPriority="high"
+                      className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-105"
+                    />
+                  </div>
+                  <div className="mt-4 flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="mb-1 text-[10px] uppercase tracking-widest text-muted-foreground">
+                        {heroProduct.category?.name || "New arrival"}
+                      </p>
+                      <p className="truncate text-sm font-semibold">{heroProduct.name}</p>
+                    </div>
+                    <p className="shrink-0 text-base font-semibold text-primary">{formatCurrency(heroProduct.price)}</p>
+                  </div>
+                </Link>
+              ) : (
+                <div className="flex aspect-[4/3] flex-col items-center justify-center rounded-2xl border border-white/80 bg-white/35 p-8 text-primary">
+                  <ShoppingBag className="mb-5 h-20 w-20" strokeWidth={1} />
+                  <p className="text-lg font-medium">Your next find starts here</p>
+                  <p className="mt-2 text-sm text-[#526e66]">A collection made for browsing.</p>
                 </div>
-              ))
-            : featuredProducts.map((product) => (
-                <ProductCard
-                  key={product._id}
-                  id={product._id}
-                  name={product.name}
-                  price={product.price}
-                  discount={product.discount}
-                  seller={product.seller}
-                  sellerEmail={product.sellerEmail}
-                  image={product.images[0]}
-                  rating={product.ratings}
-                  reviews={product.numReviews}
-                  category={product.category?.name}
-                  stock={product.stock}
-                />
-              ))}
+              )}
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* Trending Products */}
-      <section className="bg-slate-50 py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between mb-6">
+      <section
+        aria-label="Shopping made simple"
+        className="mx-auto grid max-w-7xl grid-cols-1 gap-4 px-4 py-6 sm:grid-cols-3 sm:px-6 lg:px-8 lg:py-8"
+      >
+        {[
+          { icon: Search, title: "Find your kind of thing", text: "Search and filter your way." },
+          { icon: Heart, title: "Save it for later", text: "Keep favourites in your wishlist." },
+          { icon: ShoppingBag, title: "Make it an easy everyday", text: "Shop from wherever you are." },
+        ].map(({ icon: Icon, title, text }) => (
+          <div key={title} className="flex items-center gap-3 rounded-xl border border-border/70 bg-white px-4 py-4">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#edf5f0] text-primary">
+              <Icon className="h-5 w-5" strokeWidth={1.5} />
+            </span>
             <div>
-              <div className="flex items-center gap-2 mb-1">
-                <TrendingUp className="w-5 h-5 text-rose-500" />
-                <h2 className="text-2xl font-bold">Trending Now</h2>
-              </div>
-              <p className="text-muted-foreground text-sm">Highest rated by our customers</p>
+              <h2 className="text-sm font-semibold">{title}</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">{text}</p>
             </div>
-            <Link to="/products?sort=-ratings">
-              <Button variant="ghost" size="md">
-                View All <ChevronRight className="w-4 h-4 ml-1" />
-              </Button>
+          </div>
+        ))}
+      </section>
+
+      {categories.length > 0 && (
+        <section className="mx-auto max-w-7xl px-4 pb-9 sm:px-6 lg:px-8">
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <h2 className="text-xl font-semibold tracking-tight">Shop by category</h2>
+            <Link to="/products" className="flex min-h-11 items-center gap-1 text-sm font-semibold text-primary">
+              Shop all
+              <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {productsLoading
-              ? Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="rounded-xl border bg-white animate-pulse">
-                    <div className="aspect-square bg-slate-200 rounded-t-xl" />
-                    <div className="p-4 space-y-2">
-                      <div className="h-4 bg-slate-200 rounded w-3/4" />
-                      <div className="h-3 bg-slate-200 rounded w-1/2" />
-                      <div className="h-5 bg-slate-200 rounded w-1/3" />
-                    </div>
-                  </div>
-                ))
-              : trendingProducts.map((product) => (
-                  <ProductCard
-                    key={product._id}
-                    id={product._id}
-                    name={product.name}
-                    price={product.price}
-                    discount={product.discount}
-                    seller={product.seller}
-                    sellerEmail={product.sellerEmail}
-                    image={product.images[0]}
-                    rating={product.ratings}
-                    reviews={product.numReviews}
-                    category={product.category?.name}
-                    stock={product.stock}
-                  />
-                ))}
+          <div className="scrollbar-hide flex gap-3 overflow-x-auto pb-1">
+            {categories.map((category) => (
+              <Link
+                key={category._id}
+                to={`/products?category=${encodeURIComponent(category.slug)}`}
+                className="flex min-h-14 shrink-0 items-center gap-3 rounded-xl border border-border bg-white py-3 pl-3 pr-5 text-sm font-medium hover:border-primary/40 hover:bg-accent/30"
+              >
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-primary">
+                  <Grid3X3 className="h-4 w-4" />
+                </span>
+                {category.name}
+              </Link>
+            ))}
           </div>
+        </section>
+      )}
+
+      <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
+        <div className="mb-6 flex items-end justify-between gap-4">
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">Just landed</p>
+            <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Meet your new favourites</h2>
+            <p className="mt-2 text-sm text-muted-foreground">The latest additions to explore.</p>
+          </div>
+          <Link to="/products?sort=-createdAt" className="flex min-h-11 shrink-0 items-center gap-1 text-sm font-semibold text-primary">
+            <span className="hidden sm:inline">View all</span>
+            <ArrowRight className="h-5 w-5" />
+          </Link>
         </div>
+        {error ? (
+          <CatalogMessage
+            error
+            title="The collection is taking a moment"
+            message={error}
+            onAction={() => setRefresh((value) => value + 1)}
+          />
+        ) : !loading && !products.length ? (
+          <CatalogMessage
+            title="Something good is on its way"
+            message="There are no products to display yet. Check back for new arrivals."
+          />
+        ) : (
+          <CatalogGrid loading={loading} products={products.slice(0, 4)} />
+        )}
       </section>
 
-      {/* Newsletter CTA */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="relative overflow-hidden bg-slate-900 rounded-2xl p-8 md:p-12 text-white text-center">
-          <div
-            className="absolute inset-0 opacity-5"
-            style={{
-              backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)",
-              backgroundSize: "28px 28px",
-            }}
-          />
-          <div className="relative">
-            <h2 className="text-3xl md:text-4xl font-bold mb-3">Get Exclusive Deals</h2>
-              <p className="text-slate-400 mb-6 max-w-xl mx-auto">
-              Join 50,000+ shoppers. Get early access to sales and new arrivals.
+      {products.length > 4 && (
+        <section className="border-y border-border bg-[#edf2ef] py-10 sm:py-12">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="mb-6 flex items-center justify-between gap-4">
+              <div>
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">Keep discovering</p>
+                <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">More to make your own</h2>
+              </div>
+              <Link to="/products" aria-label="Explore all products" className="header-action border border-primary/20 text-primary">
+                <ArrowRight className="h-5 w-5" />
+              </Link>
+            </div>
+            <CatalogGrid products={products.slice(4, 8)} />
+          </div>
+        </section>
+      )}
+
+      <section className="mx-auto max-w-7xl px-4 pt-12 sm:px-6 lg:px-8">
+        <div className="grid gap-7 rounded-[1.5rem] bg-[#183e37] p-6 text-white sm:p-10 lg:grid-cols-2 lg:items-center">
+          <div>
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#b2d9c6]">The occasional good thing</p>
+            <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">A fresh find in your inbox.</h2>
+            <p className="mt-3 max-w-md text-sm leading-relaxed text-white/70">
+              Sign up for product updates and new arrivals from ViswaKart.
             </p>
-            <div className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
+          </div>
+          <form onSubmit={subscribe}>
+            <label htmlFor="newsletter-email" className="mb-2 block text-sm text-white/90">
+              Your email address
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row">
               <input
+                id="newsletter-email"
                 type="email"
+                required
+                autoComplete="email"
                 value={email}
-                onChange={(e) => { setEmail(e.target.value); setSubStatus("idle"); setSubMessage(""); }}
-                onKeyDown={(e) => e.key === "Enter" && handleSubscribe()}
-                placeholder="Enter your email"
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  setSubStatus("idle");
+                  setSubMessage("");
+                }}
                 disabled={subStatus === "loading" || subStatus === "success"}
-                className="flex-1 px-4 py-3 rounded-lg text-slate-900 placeholder:text-slate-400 bg-white border-2 border-white/20 focus:outline-none focus:ring-2 focus:ring-teal-400 disabled:opacity-60"
+                placeholder="you@example.com"
+                className="min-h-12 min-w-0 flex-1 rounded-xl border border-white/20 bg-white px-4 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#b2d9c6]"
               />
               <Button
+                type="submit"
                 size="lg"
-                className="bg-white hover:bg-slate-100 text-slate-900 font-bold whitespace-nowrap disabled:opacity-60"
-                onClick={handleSubscribe}
                 disabled={subStatus === "loading" || subStatus === "success"}
+                className="bg-[#d5eadc] text-[#183e37] hover:bg-white"
               >
                 {subStatus === "loading" ? (
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                 ) : subStatus === "success" ? (
-                  <CheckCircle2 className="w-4 h-4 mr-2 text-green-600" />
+                  <Check className="h-4 w-4" />
                 ) : null}
-                {subStatus === "success" ? "Subscribed!" : "Subscribe"}
+                {subStatus === "success" ? "Subscribed" : "Keep me updated"}
               </Button>
             </div>
-            {subMessage && (
-              <p className={`mt-3 text-sm font-medium ${subStatus === "success" ? "text-green-400" : "text-red-400"}`}>
-                {subMessage}
-              </p>
-            )}
-          </div>
+            <p aria-live="polite" className="mt-3 text-xs text-white/80">
+              {subMessage || "Only updates you signed up for."}
+            </p>
+          </form>
         </div>
       </section>
     </div>

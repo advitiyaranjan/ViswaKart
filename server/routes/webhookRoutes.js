@@ -1,76 +1,23 @@
 const express = require("express");
 const { Webhook } = require("svix");
 const User = require("../models/User");
-const crypto = require("crypto");
+const { syncClerkUser } = require("../services/clerkUserService");
 const { sendWelcomeEmail } = require("../utils/email");
-
 const router = express.Router();
 
-// POST /api/webhooks/clerk  — raw body required (mounted before express.json)
 router.post("/clerk", express.raw({ type: "application/json" }), async (req, res) => {
-  const webhookSecret = process.env.CLERK_WEBHOOK_SECRET;
-  if (!webhookSecret) {
-    return res.status(500).json({ error: "CLERK_WEBHOOK_SECRET not set" });
-  }
-
-  const svixId = req.headers["svix-id"];
-  const svixTimestamp = req.headers["svix-timestamp"];
-  const svixSignature = req.headers["svix-signature"];
-
-  if (!svixId || !svixTimestamp || !svixSignature) {
-    return res.status(400).json({ error: "Missing svix headers" });
-  }
-
+  const secret = process.env.CLERK_WEBHOOK_SECRET;
+  if (!secret) return res.status(503).json({ error: "Webhook is not configured" });
+  const headers = { "svix-id": req.headers["svix-id"], "svix-timestamp": req.headers["svix-timestamp"], "svix-signature": req.headers["svix-signature"] };
+  if (Object.values(headers).some((value) => !value)) return res.status(400).json({ error: "Missing webhook headers" });
   let event;
-  try {
-    const wh = new Webhook(webhookSecret);
-    event = wh.verify(req.body, {
-      "svix-id": svixId,
-      "svix-timestamp": svixTimestamp,
-      "svix-signature": svixSignature,
-    });
-  } catch (err) {
-    return res.status(400).json({ error: "Webhook verification failed" });
+  try { event = new Webhook(secret).verify(req.body.toString("utf8"), headers); }
+  catch { return res.status(400).json({ error: "Webhook verification failed" }); }
+  if (["user.created", "user.updated"].includes(event.type)) {
+    const { user, created } = await syncClerkUser(event.data);
+    if (created && user.email) void sendWelcomeEmail(user.email, user.name).catch(() => {});
   }
-
-  const { type, data } = event;
-
-  if (type === "user.created" || type === "user.updated") {
-    const clerkId = data.id;
-    const email = data.email_addresses?.[0]?.email_address ?? "";
-    const name = `${data.first_name ?? ""} ${data.last_name ?? ""}`.trim() || email;
-    const avatar = data.image_url ?? "";
-
-    const result = await User.findOneAndUpdate(
-      { clerkId },
-      {
-        $setOnInsert: {
-          clerkId,
-          email,
-          name,
-          avatar,
-          password: crypto.randomBytes(32).toString("hex"),
-        },
-        // Always keep name/email/avatar in sync on update
-        $set: { name, email, avatar },
-      },
-      { upsert: true, new: true, rawResult: true }
-    );
-
-    // Send welcome email only on first signup (upserted = new doc)
-    if (type === "user.created" && result.lastErrorObject?.upserted && email) {
-      sendWelcomeEmail(email, name).catch(() => {});
-    }
-  }
-
-  if (type === "user.deleted") {
-    await User.findOneAndUpdate(
-      { clerkId: data.id },
-      { isActive: false }
-    );
-  }
-
-  res.status(200).json({ received: true });
+  if (event.type === "user.deleted") await User.findOneAndUpdate({ clerkId: event.data.id }, { $set: { isActive: false } });
+  res.json({ received: true });
 });
-
 module.exports = router;

@@ -1,13 +1,29 @@
-import { Outlet, Link, useLocation, useNavigate } from "react-router";
-import { Search, ShoppingCart, ShoppingBag, User, Menu, X, LayoutDashboard, ArrowLeft, Heart, Truck } from "lucide-react";
+import { Outlet, Link, NavLink, useLocation, useNavigate } from "react-router";
+import {
+  Search,
+  ShoppingCart,
+  ShoppingBag,
+  User,
+  LayoutDashboard,
+  Heart,
+  Truck,
+  MapPin,
+  HelpCircle,
+  ArrowUpRight,
+  ArrowRight,
+  Home,
+  Store,
+} from "lucide-react";
+import { useState, useEffect, useRef, type FormEvent } from "react";
 import { Button } from "../components/Button";
-import { useState, useEffect, useRef } from "react";
+import { ProductImage } from "../components/ProductImage";
+import { CatalogCategory, CatalogProduct } from "../components/CatalogUI";
 import { useCart } from "../../context/CartContext";
+import { useWishlist } from "../../context/WishlistContext";
 import { useAuth } from "../../context/AuthContext";
 import { categoryService, productService } from "../../services/productService";
 import { UserButton, SignInButton, useUser } from "@clerk/react";
 import { formatCurrency } from "../../lib/currency";
-import { MapPin, ShoppingBag as OrdersIcon, HelpCircle } from "lucide-react";
 import AddressesPage from "../pages/profile/AddressesPage";
 import OrdersPage from "../pages/profile/OrdersPage";
 import HelpSupportPage from "../pages/profile/HelpSupportPage";
@@ -15,385 +31,354 @@ import SellProductPage from "../pages/profile/SellProductPage";
 import SellerOrdersPage from "../pages/profile/SellerOrdersPage";
 import DonateUsPage from "../pages/profile/DonateUsPage";
 
-interface Category { _id: string; name: string; slug: string; }
+const SUPPORT_EMAIL = "advitiyaranjan1@gmail.com";
+// Pages with their own sticky action bar on phones.
+const HIDE_TAB_BAR = [/^\/products\/[^/]+$/, /^\/checkout/, /^\/buy-now/];
+
+function Badge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return <span className="cart-badge">{count > 99 ? "99+" : count}</span>;
+}
 
 export default function UserLayout() {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [categories, setCategories] = useState<CatalogCategory[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<CatalogProduct[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
-  const { user, isAdmin } = useAuth();
+  const [searchError, setSearchError] = useState(false);
+  const searchRef = useRef<HTMLFormElement>(null);
+  const { isAdmin } = useAuth();
   const { isSignedIn } = useUser();
   const { totalItems } = useCart();
+  const { wishlist } = useWishlist();
   const navigate = useNavigate();
   const location = useLocation();
+  const showTabBar = !HIDE_TAB_BAR.some((pattern) => pattern.test(location.pathname));
 
-  // Wishlist count — reads from localStorage, updates on storage events
-  const [wishlistCount, setWishlistCount] = useState(0);
   useEffect(() => {
-    const read = () => setWishlistCount(JSON.parse(localStorage.getItem("wishlist") ?? "[]").length);
-    read();
-    window.addEventListener("storage", read);
-    // Poll for same-tab changes
-    const id = setInterval(read, 500);
-    return () => { window.removeEventListener("storage", read); clearInterval(id); };
-  }, []);
+    setSearchOpen(false);
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [location.pathname, location.search]);
 
-  // Close dropdown on outside click
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
-        setSearchOpen(false);
-      }
+    const handler = (event: PointerEvent) => {
+      if (!searchRef.current?.contains(event.target as Node)) setSearchOpen(false);
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("pointerdown", handler);
+    return () => document.removeEventListener("pointerdown", handler);
   }, []);
 
-  // Debounced live search
   useEffect(() => {
-    if (!searchQuery.trim()) { setSearchResults([]); setSearchOpen(false); return; }
+    let current = true;
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      setSearchOpen(false);
+      setSearchLoading(false);
+      return;
+    }
+    setSearchLoading(true);
+    setSearchError(false);
     const timer = setTimeout(() => {
-      setSearchLoading(true);
-      productService.getProducts({ search: searchQuery.trim(), limit: 8 })
-        .then((res) => { setSearchResults(res.data.products ?? []); setSearchOpen(true); })
-        .catch(() => setSearchResults([]))
-        .finally(() => setSearchLoading(false));
+      productService
+        .getProducts({ search: searchQuery.trim(), limit: 5 })
+        .then((res) => {
+          if (!current) return;
+          setSearchResults(res.data.products ?? []);
+          setSearchOpen(true);
+        })
+        .catch(() => {
+          if (!current) return;
+          setSearchResults([]);
+          setSearchError(true);
+          setSearchOpen(true);
+        })
+        .finally(() => current && setSearchLoading(false));
     }, 300);
-    return () => clearTimeout(timer);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
   }, [searchQuery]);
 
   useEffect(() => {
-    categoryService.getCategories().then((res) => setCategories(res.data.categories));
+    let current = true;
+    categoryService
+      .getCategories()
+      .then((res) => current && setCategories(res.data.categories ?? []))
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
   }, []);
 
+  function submitSearch(event?: FormEvent) {
+    event?.preventDefault();
+    if (!searchQuery.trim()) return;
+    navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+    setSearchQuery("");
+    setSearchOpen(false);
+  }
+
+  const category = new URLSearchParams(location.search).get("category");
+  const onShopAll = location.pathname === "/products" && !category;
+
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-white border-b border-border shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            {/* Logo */}
-            <Link to="/" className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center">
-                <ShoppingBag className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-xl font-bold tracking-tight text-foreground">ViswaKart</span>
-            </Link>
+    <div className={`flex min-h-screen flex-col bg-background ${showTabBar ? "pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0" : ""}`}>
+      <a href="#main-content" className="skip-link">
+        Skip to content
+      </a>
+      <div className="bg-[#153c37] px-4 py-2 text-center text-xs tracking-wide text-white/90">
+        Free standard delivery · Pay when your order arrives
+      </div>
 
-            {/* Search Bar - Desktop */}
-            <div className="hidden md:flex flex-1 max-w-2xl mx-8" ref={searchRef}>
-              <div className="relative w-full">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground z-10" />
-                <input
-                  type="search"
-                  placeholder="Search products..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onFocus={() => searchResults.length > 0 && setSearchOpen(true)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && searchQuery.trim()) {
-                      navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
-                      setSearchQuery(""); setSearchOpen(false);
-                    }
-                    if (e.key === "Escape") setSearchOpen(false);
-                  }}
-                  className="w-full pl-10 pr-4 py-2 bg-muted rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-                {/* Live search dropdown */}
-                {searchOpen && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-border rounded-xl shadow-xl z-50 overflow-hidden">
-                    {searchLoading ? (
-                      <div className="grid grid-cols-2 gap-3 p-3">
-                        {[...Array(4)].map((_, i) => (
-                          <div key={i} className="flex items-center gap-2 p-2 rounded-lg animate-pulse">
-                            <div className="w-12 h-12 rounded-lg bg-slate-100 flex-shrink-0" />
-                            <div className="flex-1 space-y-1.5">
-                              <div className="h-3 bg-slate-100 rounded w-3/4" />
-                              <div className="h-3 bg-slate-100 rounded w-1/2" />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : searchResults.length > 0 ? (
-                      <>
-                        <div className="grid grid-cols-2 gap-0 divide-y divide-border">
-                          {searchResults.map((p, i) => (
-                            <Link
-                              key={p._id}
-                              to={`/products/${p._id}`}
-                              onClick={() => { setSearchOpen(false); setSearchQuery(""); }}
-                              className={`flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors ${i % 2 === 0 ? "border-r border-border" : ""}`}
-                            >
-                              <img
-                                src={p.images?.[0] || "/placeholder.png"}
-                                alt={p.name}
-                                className="w-11 h-11 rounded-lg object-cover flex-shrink-0 bg-muted"
-                              />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-foreground line-clamp-1">{p.name}</p>
-                                <p className="text-sm font-bold text-primary">{formatCurrency(p.price)}</p>
-                              </div>
-                            </Link>
-                          ))}
-                        </div>
-                        <div className="border-t border-border">
-                          <button
-                            onClick={() => { navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`); setSearchQuery(""); setSearchOpen(false); }}
-                            className="w-full py-2.5 text-sm text-primary font-semibold hover:bg-primary/5 transition-colors"
-                          >
-                            See all results for "{searchQuery}"
-                          </button>
-                        </div>
-                      </>
-                    ) : (
-                      <p className="px-4 py-3 text-sm text-muted-foreground">No products found</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+      <header className="sticky top-0 z-40 border-b border-border bg-white/95 backdrop-blur-xl">
+        <div className="mx-auto grid max-w-7xl grid-cols-[1fr_auto] items-center gap-x-4 gap-y-3 px-4 py-3 sm:px-6 lg:grid-cols-[auto_1fr_auto] lg:px-8 lg:py-4">
+          <Link to="/" aria-label="ViswaKart home" className="inline-flex w-fit items-center gap-2.5">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-white">
+              <ShoppingBag className="h-5 w-5" strokeWidth={1.7} />
+            </span>
+            <span className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+              Viswa<span className="text-primary">Kart</span>
+              <span className="hidden text-[10px] font-normal uppercase tracking-[0.22em] text-muted-foreground sm:block">
+                Discover your everyday
+              </span>
+            </span>
+          </Link>
 
-            {/* Actions */}
-            <div className="flex items-center gap-2">
-              {/* Wishlist */}
-              <Link to="/wishlist">
-                <Button variant="ghost" size="md" className="relative" title="My Wishlist">
-                  <Heart className={`w-5 h-5 ${wishlistCount > 0 ? "fill-red-500 text-red-500" : ""}`} />
-                  {wishlistCount > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
-                      {wishlistCount > 9 ? "9+" : wishlistCount}
-                    </span>
-                  )}
-                </Button>
-              </Link>
-              <Link to="/cart">
-                <Button variant="ghost" size="md" className="relative">
-                  <ShoppingCart className="w-5 h-5" />
-                  {totalItems > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-primary text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
-                      {totalItems}
-                    </span>
-                  )}
-                </Button>
-              </Link>
-              {isSignedIn ? (
-                <div className="flex items-center gap-2">
-                  {isAdmin && (
-                    <Link to="/admin">
-                      <Button variant="ghost" size="md" title="Admin Panel">
-                        <LayoutDashboard className="w-5 h-5" />
-                      </Button>
-                    </Link>
-                  )}
-                  <UserButton afterSignOutUrl="/" userProfileMode="modal" appearance={{ elements: { userButtonPopoverFooter: { display: "none" } } }} userProfileProps={{ appearance: { elements: { footer: { display: "none" } } } }}>
-                    <UserButton.UserProfilePage
-                      label="My Addresses"
-                      url="addresses"
-                      labelIcon={<MapPin className="w-4 h-4" />}
-                    >
-                      <AddressesPage />
-                    </UserButton.UserProfilePage>
-                    <UserButton.UserProfilePage
-                      label="My Orders"
-                      url="orders"
-                      labelIcon={<OrdersIcon className="w-4 h-4" />}
-                    >
-                      <OrdersPage />
-                    </UserButton.UserProfilePage>
-
-                    <UserButton.UserProfilePage
-                      label="Seller Orders"
-                      url="seller-orders"
-                      labelIcon={<Truck className="w-4 h-4" />}
-                    >
-                      <SellerOrdersPage />
-                    </UserButton.UserProfilePage>
-                    <UserButton.UserProfilePage
-                      label="Help & Support"
-                      url="help"
-                      labelIcon={<HelpCircle className="w-4 h-4" />}
-                    >
-                      <HelpSupportPage />
-                    </UserButton.UserProfilePage>
-                    <UserButton.UserProfilePage
-                      label="Sell a Product"
-                      url="sell"
-                      labelIcon={<ShoppingBag className="w-4 h-4" />}
-                    >
-                      <SellProductPage />
-                    </UserButton.UserProfilePage>
-                    <UserButton.UserProfilePage
-                      label="Donate Us"
-                      url="donate"
-                      labelIcon={<Heart className="w-4 h-4" />}
-                    >
-                      <DonateUsPage />
-                    </UserButton.UserProfilePage>
-                  </UserButton>
-                  <span className="hidden md:block text-sm font-medium text-muted-foreground">
-                    {user?.name.split(" ")[0]}
-                  </span>
-                </div>
-              ) : (
-                <SignInButton mode="modal">
-                  <Button variant="ghost" size="md">
-                    <User className="w-5 h-5" />
-                  </Button>
-                </SignInButton>
-              )}
-              <button
-                className="md:hidden"
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          <form
+            role="search"
+            ref={searchRef}
+            onSubmit={submitSearch}
+            className="relative order-3 col-span-2 lg:order-none lg:col-span-1 lg:mx-5"
+            onKeyDown={(event) => event.key === "Escape" && setSearchOpen(false)}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node)) setSearchOpen(false);
+            }}
+          >
+            <label htmlFor="store-search" className="sr-only">
+              Search products
+            </label>
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
+            <input
+              id="store-search"
+              type="search"
+              autoComplete="off"
+              enterKeyHint="search"
+              placeholder="What are you looking for?"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onFocus={() => searchQuery.trim() && setSearchOpen(true)}
+              aria-controls={searchOpen ? "search-suggestions" : undefined}
+              aria-expanded={searchOpen}
+              className="min-h-12 w-full rounded-xl border border-border bg-muted/60 py-3 pl-11 pr-14 text-base focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/15"
+            />
+            <button
+              type="submit"
+              aria-label="Search"
+              className="absolute right-1 top-1 flex h-10 w-10 items-center justify-center rounded-lg text-primary hover:bg-accent"
+            >
+              <ArrowRight className="h-5 w-5" />
+            </button>
+            {searchOpen && (
+              <div
+                id="search-suggestions"
+                className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-border bg-white shadow-xl"
               >
-                {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-              </button>
-            </div>
-          </div>
+                <div className="border-b border-border px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Products
+                </div>
+                {searchLoading ? (
+                  <p role="status" className="p-4 text-sm text-muted-foreground">
+                    Searching…
+                  </p>
+                ) : searchError ? (
+                  <p role="status" className="p-4 text-sm text-muted-foreground">
+                    Suggestions are unavailable. Press search to try again.
+                  </p>
+                ) : searchResults.length ? (
+                  searchResults.map((product) => (
+                    <Link
+                      key={product._id}
+                      to={`/products/${product._id}`}
+                      onClick={() => {
+                        setSearchQuery("");
+                        setSearchOpen(false);
+                      }}
+                      className="flex items-center gap-3 px-4 py-3 hover:bg-muted"
+                    >
+                      <ProductImage src={product.images?.[0]} alt="" className="h-12 w-12 shrink-0 rounded-lg object-contain" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">{product.name}</span>
+                        <span className="text-sm font-semibold text-primary">{formatCurrency(product.price)}</span>
+                      </span>
+                      <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
+                    </Link>
+                  ))
+                ) : (
+                  <p role="status" className="p-4 text-sm text-muted-foreground">
+                    No matching products. Try a different name.
+                  </p>
+                )}
+                <button
+                  type="submit"
+                  className="min-h-12 w-full border-t border-border px-4 py-3 text-left text-sm font-semibold text-primary hover:bg-accent"
+                >
+                  View all search results <ArrowRight className="ml-1 inline h-4 w-4" />
+                </button>
+              </div>
+            )}
+          </form>
 
-          {/* Mobile Search */}
-          <div className="md:hidden pb-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-              <input
-                type="search"
-                placeholder="Search products..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && searchQuery.trim()) {
-                    navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
-                    setSearchQuery(""); setSearchOpen(false);
-                  }
-                }}
-                className="w-full pl-10 pr-4 py-2 bg-muted rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
+          <div className="flex items-center gap-0.5 sm:gap-1.5">
+            <Link to="/wishlist" aria-label={`Wishlist, ${wishlist.length} saved items`} className="header-action hidden md:inline-flex">
+              <Heart className="h-5 w-5" />
+              <Badge count={wishlist.length} />
+            </Link>
+            <Link to="/cart" aria-label={`Cart, ${totalItems} items`} className="header-action">
+              <ShoppingCart className="h-5 w-5" />
+              <Badge count={totalItems} />
+            </Link>
+            {isAdmin && (
+              <Link to="/admin" aria-label="Admin dashboard" title="Admin dashboard" className="header-action">
+                <LayoutDashboard className="h-5 w-5" />
+              </Link>
+            )}
+            {isSignedIn ? (
+              <div className="flex h-11 min-w-11 items-center justify-center">
+                <UserButton userProfileMode="modal">
+                  <UserButton.UserProfilePage label="My Orders" url="orders" labelIcon={<ShoppingBag className="h-4 w-4" />}>
+                    <OrdersPage />
+                  </UserButton.UserProfilePage>
+                  <UserButton.UserProfilePage label="My Addresses" url="addresses" labelIcon={<MapPin className="h-4 w-4" />}>
+                    <AddressesPage />
+                  </UserButton.UserProfilePage>
+                  <UserButton.UserProfilePage label="Sell a Product" url="sell" labelIcon={<Store className="h-4 w-4" />}>
+                    <SellProductPage />
+                  </UserButton.UserProfilePage>
+                  <UserButton.UserProfilePage label="Seller Orders" url="seller-orders" labelIcon={<Truck className="h-4 w-4" />}>
+                    <SellerOrdersPage />
+                  </UserButton.UserProfilePage>
+                  <UserButton.UserProfilePage label="Help & Support" url="help" labelIcon={<HelpCircle className="h-4 w-4" />}>
+                    <HelpSupportPage />
+                  </UserButton.UserProfilePage>
+                  <UserButton.UserProfilePage label="Donate Us" url="donate" labelIcon={<Heart className="h-4 w-4" />}>
+                    <DonateUsPage />
+                  </UserButton.UserProfilePage>
+                </UserButton>
+              </div>
+            ) : (
+              <SignInButton mode="modal">
+                <Button variant="ghost" className="px-2.5 sm:px-3" aria-label="Sign in">
+                  <User className="h-5 w-5" />
+                  <span className="hidden lg:inline">Sign in</span>
+                </Button>
+              </SignInButton>
+            )}
           </div>
         </div>
 
-        {/* Categories Navigation */}
-        <nav className="border-t border-border bg-white">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex gap-1 overflow-x-auto py-1 scrollbar-hide">
-              {categories.map((category) => {
-                const isActive =
-                  location.pathname === "/products" &&
-                  new URLSearchParams(location.search).get("category") === category.slug;
-                return (
-                  <Link
-                    key={category._id}
-                    to={`/products?category=${category.slug}`}
-                    className={`relative whitespace-nowrap text-sm font-medium px-4 py-2 rounded-md transition-all duration-150
-                      ${isActive
-                        ? "text-primary bg-primary/10"
-                        : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                      }`}
-                  >
-                    {category.name}
-                    {isActive && (
-                      <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-primary rounded-full" />
-                    )}
-                  </Link>
-                );
-              })}
+        {categories.length > 0 && (
+          <nav aria-label="Shop categories" className="border-t border-border/70">
+            <div className="scrollbar-hide mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 sm:px-6 lg:px-8">
+              <Link to="/products" className={`category-nav ${onShopAll ? "active" : ""}`} aria-current={onShopAll ? "page" : undefined}>
+                Shop all
+              </Link>
+              {categories.map((item) => (
+                <Link
+                  key={item._id}
+                  to={`/products?category=${encodeURIComponent(item.slug)}`}
+                  className={`category-nav ${category === item.slug ? "active" : ""}`}
+                  aria-current={category === item.slug ? "page" : undefined}
+                >
+                  {item.name}
+                </Link>
+              ))}
             </div>
-          </div>
-        </nav>
+          </nav>
+        )}
       </header>
 
-      {/* Mobile Menu */}
-      {mobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 top-[128px] bg-background z-40 p-4 overflow-y-auto">
-          <nav className="space-y-4">
-            <Link
-              to="/products"
-              className="block text-lg font-semibold text-primary hover:text-primary/80 transition-colors"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              All Products
-            </Link>
-            {categories.map((category) => (
-              <Link
-                key={category._id}
-                to={`/products?category=${category.slug}`}
-                className="block text-lg font-medium hover:text-primary transition-colors"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                {category.name}
-              </Link>
-            ))}
-          </nav>
-        </div>
-      )}
-
-      {/* Back button bar — shown on all non-home pages */}
-      {location.pathname !== "/" && (
-        <div className="bg-white border-b border-slate-100">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <button
-              onClick={() => navigate(-1)}
-              className="flex items-center gap-1.5 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors group"
-            >
-              <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-              <span className="font-medium">Back</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Main Content */}
-      <main className="flex-1">
+      <main id="main-content" tabIndex={-1} className="flex-1 outline-none">
         <Outlet />
       </main>
 
-      {/* Footer */}
-      <footer className="bg-card border-t border-border mt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-            <div>
-              <h4 className="font-semibold mb-4">About</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><a href="#" className="hover:text-primary">About Us</a></li>
-                <li><a href="#" className="hover:text-primary">Careers</a></li>
-                <li><a href="#" className="hover:text-primary">Press</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-4">Help &amp; Support</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><a href="mailto:advitiyaranjan1@gmail.com" className="hover:text-primary">advitiyaranjan1@gmail.com</a></li>
-                <li><a href="tel:+919430435643" className="hover:text-primary">+91 94304 35643</a></li>
-                <li><a href="#" className="hover:text-primary">Shipping Info</a></li>
-                <li><a href="#" className="hover:text-primary">Returns</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-4">Shop</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><a href="#" className="hover:text-primary">All Products</a></li>
-                <li><a href="#" className="hover:text-primary">Categories</a></li>
-                <li><a href="#" className="hover:text-primary">Deals</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-4">Connect</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><a href="#" className="hover:text-primary">Facebook</a></li>
-                <li><a href="#" className="hover:text-primary">Twitter</a></li>
-                <li><a href="#" className="hover:text-primary">Instagram</a></li>
-              </ul>
+      <footer className="mt-16 border-t border-border bg-white">
+        <div className="mx-auto grid max-w-7xl gap-9 px-4 py-10 sm:grid-cols-2 sm:px-6 lg:grid-cols-[2fr_1fr_1fr] lg:px-8 lg:py-14">
+          <div>
+            <Link to="/" className="inline-flex items-center gap-2 text-xl font-bold">
+              <ShoppingBag className="h-6 w-6 text-primary" />
+              ViswaKart
+            </Link>
+            <p className="mt-3 max-w-sm text-sm leading-relaxed text-muted-foreground">
+              Find something for your everyday. Explore the collection, save your favourites, and pay when your order arrives.
+            </p>
+          </div>
+          <div>
+            <h2 className="mb-3 text-sm font-semibold">Make yourself at home</h2>
+            <div className="flex flex-col items-start gap-1 text-sm text-muted-foreground">
+              <Link className="py-2 hover:text-primary" to="/products">
+                Shop all products
+              </Link>
+              <Link className="py-2 hover:text-primary" to="/wishlist">
+                Your wishlist
+              </Link>
+              <Link className="py-2 hover:text-primary" to="/cart">
+                Your shopping cart
+              </Link>
+              <Link className="py-2 hover:text-primary" to="/account#/orders">
+                Your orders
+              </Link>
             </div>
           </div>
-          <div className="mt-8 pt-8 border-t border-border text-center text-sm text-muted-foreground space-y-1">
-            <p>&copy; 2026 ViswaKart. All rights reserved.</p>
-            <p>Developed &amp; managed by <a href="https://advitiyaranjan.in" target="_blank" rel="noopener noreferrer" className="hover:text-primary underline underline-offset-2">advitiyaranjan.in</a></p>
+          <div>
+            <h2 className="mb-3 text-sm font-semibold">We're here to help</h2>
+            <p className="mb-2 text-sm text-muted-foreground">Questions about an order or a product?</p>
+            <a href={`mailto:${SUPPORT_EMAIL}`} className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-primary">
+              Email our team
+              <ArrowUpRight className="h-4 w-4" />
+            </a>
+            <a href="tel:+919430435643" className="block py-2 text-sm text-muted-foreground">
+              +91 94304 35643
+            </a>
           </div>
         </div>
+        <div className="border-t border-border px-4 py-5 text-center text-xs text-muted-foreground">
+          © {new Date().getFullYear()} ViswaKart. All rights reserved.
+        </div>
       </footer>
+
+      {showTabBar && (
+        <nav
+          aria-label="Quick navigation"
+          className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-border bg-white/95 pt-1.5 backdrop-blur-xl md:hidden"
+        >
+          <div className="mx-auto grid max-w-md grid-cols-5">
+            {[
+              { to: "/", label: "Home", icon: Home, end: true, count: 0 },
+              { to: "/products", label: "Shop", icon: Store, end: false, count: 0 },
+              { to: "/wishlist", label: "Saved", icon: Heart, end: false, count: wishlist.length },
+              { to: "/cart", label: "Cart", icon: ShoppingCart, end: false, count: totalItems },
+              { to: "/account", label: "Account", icon: User, end: false, count: 0 },
+            ].map(({ to, label, icon: Icon, end, count }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                className={({ isActive }) =>
+                  `flex min-h-12 flex-col items-center justify-center gap-0.5 text-[11px] font-medium ${isActive ? "text-primary" : "text-muted-foreground"}`
+                }
+              >
+                <span className="relative flex h-7 w-10 items-center justify-center">
+                  <Icon className="h-5 w-5" />
+                  {count > 0 && <span className="cart-badge -right-0.5 -top-1">{count > 99 ? "99+" : count}</span>}
+                </span>
+                {label}
+              </NavLink>
+            ))}
+          </div>
+        </nav>
+      )}
     </div>
   );
 }

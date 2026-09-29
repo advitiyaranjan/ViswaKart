@@ -27,7 +27,6 @@ const userSchema = new mongoose.Schema(
     clerkId: {
       type: String,
       default: null,
-      index: true,
     },
     isVerified: {
       type: Boolean,
@@ -42,6 +41,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    phone: { type: String, default: "" },
     address: {
       street: String,
       city: String,
@@ -94,7 +94,7 @@ const userSchema = new mongoose.Schema(
     },
     sellerRequestMessage: { type: String, default: "" },
   },
-  { timestamps: true }
+  { timestamps: true, optimisticConcurrency: true }
 );
 
 // Hash password before saving (only if password is set)
@@ -110,4 +110,5 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
+userSchema.index({ clerkId: 1 }, { unique: true, partialFilterExpression: { clerkId: { $type: "string" } } });
 module.exports = mongoose.model("User", userSchema);

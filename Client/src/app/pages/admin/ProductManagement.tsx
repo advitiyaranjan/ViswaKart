@@ -1,323 +1,579 @@
-import { useState, useEffect, useCallback } from "react";
-import { Plus, Search, Edit, Trash2, Eye } from "lucide-react";
-import { Button } from "../../components/Button";
-import { productService, categoryService } from "../../../services/productService";
+import { useState, useEffect, useCallback, useRef, type FormEvent } from "react";
+import { Plus, Search, Pencil, Trash2, ArrowUpRight, Package, RotateCcw, Link2 } from "lucide-react";
 import { Link } from "react-router";
+import { toast } from "sonner";
+import { Button } from "../../components/Button";
+import { ProductImage } from "../../components/ProductImage";
+import ImageUploader from "../../components/ImageUploader";
+import { productService, categoryService } from "../../../services/productService";
 import { formatCurrency } from "../../../lib/currency";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { productSchema, ProductFormValues } from "../../../lib/validationSchemas";
+import { availableStock, getProductPricing } from "../../../lib/commerce";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "../../components/ui/dialog";
+import { PageHeading, ErrorNotice, EmptyState, Pagination, inputClass, panelClass, actionClass, errorMessage } from "./AdminUI";
 
-interface Category { _id: string; name: string; }
+interface Category {
+  _id: string;
+  name: string;
+}
+
 interface Product {
   _id: string;
   name: string;
-  category: Category;
+  category: Category | null;
   price: number;
-  discount?: number;
+  originalPrice?: number;
   stock: number;
-  ratings: number;
-  numReviews: number;
-  images: string[];
+  sold?: boolean;
+  isActive?: boolean;
+  ratings?: number;
+  numReviews?: number;
+  images?: string[];
   description: string;
+  sellerEmail?: string;
+}
+
+interface ProductForm {
+  name: string;
+  category: string;
+  price: string;
+  originalPrice: string;
+  stock: string;
+  description: string;
+  images: string[];
+}
+
+const emptyForm: ProductForm = { name: "", category: "", price: "", originalPrice: "", stock: "", description: "", images: [] };
+const PAGE_SIZE = 20;
+// Must match the server's image URL rule in productController.
+const IMAGE_URL = /^(https?:\/\/|\/uploads\/)/i;
+
+function Thumb({ product }: { product: Product }) {
+  return (
+    <ProductImage
+      src={product.images?.[0]}
+      alt=""
+      className="h-14 w-14 shrink-0 rounded-xl border border-slate-100 bg-slate-50 object-contain p-0.5"
+    />
+  );
+}
+
+function StockBadge({ product }: { product: Product }) {
+  if (product.isActive === false)
+    return (
+      <span className="inline-flex whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+        Removed
+      </span>
+    );
+  const stock = availableStock(product);
+  const tone = stock > 5 ? "bg-teal-50 text-teal-700" : stock > 0 ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-700";
+  return (
+    <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${tone}`}>
+      {stock > 0 ? `${stock} in stock` : "Sold out"}
+    </span>
+  );
+}
+
+function Price({ product }: { product: Product }) {
+  const pricing = getProductPricing(product);
+  return (
+    <>
+      <span className="font-semibold">{formatCurrency(pricing.price)}</span>
+      {pricing.discount > 0 && (
+        <span className="ml-2 text-xs text-slate-400">
+          <s>{formatCurrency(pricing.originalPrice)}</s> · {pricing.discount}% off
+        </span>
+      )}
+    </>
+  );
 }
 
 export default function ProductManagement() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("");
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("");
+  const [showRemoved, setShowRemoved] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
   const [showModal, setShowModal] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editing, setEditing] = useState<Product | null>(null);
+  const [form, setForm] = useState<ProductForm>(emptyForm);
+  const [imageUrl, setImageUrl] = useState("");
+  const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
-
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors },
-  } = useForm<ProductFormValues>({
-    resolver: zodResolver(productSchema),
-    mode: "onBlur",
-  });
+  const [uploading, setUploading] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const requestId = useRef(0);
 
   const loadProducts = useCallback(async () => {
+    const id = ++requestId.current;
     setIsLoading(true);
-    const params: Record<string, unknown> = { limit: 50 };
-    if (searchQuery) params.search = searchQuery;
-    if (selectedCategory) params.category = selectedCategory;
-    const res = await productService.getProducts(params);
-    setProducts(res.data.products);
-    setIsLoading(false);
-  }, [searchQuery, selectedCategory]);
+    setError("");
+    try {
+      const { data } = await productService.getProducts({
+        page,
+        limit: PAGE_SIZE,
+        search: search.trim() || undefined,
+        category: category || undefined,
+        includeInactive: showRemoved || undefined,
+      });
+      if (id !== requestId.current) return;
+      setProducts(data.products || []);
+      setTotal(data.total ?? 0);
+      if (page > 1 && data.products?.length === 0) setPage(page - 1);
+    } catch (err) {
+      if (id === requestId.current) setError(errorMessage(err, "We couldn't load the product catalog."));
+    } finally {
+      if (id === requestId.current) setIsLoading(false);
+    }
+  }, [page, search, category, showRemoved]);
 
   useEffect(() => {
-    loadProducts();
+    const timer = setTimeout(() => void loadProducts(), 250);
+    return () => {
+      clearTimeout(timer);
+      requestId.current++;
+    };
   }, [loadProducts]);
 
-  useEffect(() => {
-    categoryService.getCategories().then((res) => setCategories(res.data.categories));
+  const loadCategories = useCallback(async () => {
+    try {
+      const { data } = await categoryService.getCategories();
+      setCategories(data.categories || []);
+    } catch (err) {
+      toast.error(errorMessage(err, "Categories could not be loaded. Please refresh before editing a product."));
+    }
   }, []);
 
-  const openAdd = () => {
-    setEditingProduct(null);
-    reset({ name: "", category: "", price: undefined as any, discount: 0, stock: undefined as any, description: "" });
+  useEffect(() => {
+    void loadCategories();
+  }, [loadCategories]);
+
+  function openEditor(product?: Product) {
+    setEditing(product || null);
+    setForm(
+      product
+        ? {
+            name: product.name,
+            category: product.category?._id || "",
+            price: String(product.price),
+            originalPrice: product.originalPrice && product.originalPrice > product.price ? String(product.originalPrice) : "",
+            stock: String(product.stock),
+            description: product.description,
+            images: product.images || [],
+          }
+        : emptyForm,
+    );
+    setImageUrl("");
+    setFormError("");
     setShowModal(true);
-  };
+    void loadCategories();
+  }
 
-  const openEdit = (product: Product) => {
-    setEditingProduct(product);
-    reset({
-      name: product.name,
-      category: product.category?._id || "",
-      price: product.price,
-      discount: product.discount ?? 0,
-      stock: product.stock,
-      description: product.description,
-    });
-    setShowModal(true);
-  };
+  async function removeProduct(product: Product) {
+    if (
+      !window.confirm(`Remove “${product.name}” from the store? Existing orders keep their product details, and you can restore it later.`)
+    )
+      return;
+    setBusyId(product._id);
+    try {
+      await productService.deleteProduct(product._id);
+      await loadProducts();
+      toast.success("Product removed from the store");
+    } catch (err) {
+      toast.error(errorMessage(err, "The product could not be removed."));
+    } finally {
+      setBusyId(null);
+    }
+  }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Delete this product?")) return;
-    await productService.deleteProduct(id);
-    setProducts((prev) => prev.filter((p) => p._id !== id));
-  };
+  async function restoreProduct(product: Product) {
+    setBusyId(product._id);
+    try {
+      await productService.updateProduct(product._id, { isActive: true });
+      await loadProducts();
+      toast.success("Product is back in the store");
+    } catch (err) {
+      toast.error(errorMessage(err, "The product could not be restored."));
+    } finally {
+      setBusyId(null);
+    }
+  }
 
-  const handleSubmit2 = async (data: ProductFormValues) => {
+  function addImageUrl() {
+    const url = imageUrl.trim();
+    if (!url) return;
+    if (!IMAGE_URL.test(url)) {
+      setFormError("Image links must start with http:// or https://.");
+      return;
+    }
+    setForm((current) => ({ ...current, images: [...current.images, url].slice(0, 12) }));
+    setImageUrl("");
+    setFormError("");
+  }
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFormError("");
+    const price = Number(form.price);
+    const originalPrice = form.originalPrice.trim() ? Number(form.originalPrice) : price;
+    const stock = Number(form.stock);
+    if (!form.name.trim() || !form.description.trim()) return setFormError("Enter a product name and description.");
+    if (!form.category) return setFormError("Choose a category.");
+    if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(originalPrice) || originalPrice < price) {
+      return setFormError("Selling price must be positive, and the compare-at price can't be lower than it.");
+    }
+    if (!Number.isInteger(stock) || stock < 0) return setFormError("Stock must be a whole number of zero or more.");
+    if (form.images.some((value) => !IMAGE_URL.test(value)))
+      return setFormError("One of the images has an invalid link. Remove it and try again.");
     setSaving(true);
     try {
-      const payload = { name: data.name, category: data.category, price: data.price, discount: data.discount ?? 0, stock: data.stock, description: data.description };
-      if (editingProduct) {
-        await productService.updateProduct(editingProduct._id, payload);
-      } else {
-        await productService.createProduct(payload);
-      }
+      const payload = {
+        name: form.name.trim(),
+        category: form.category,
+        price,
+        originalPrice,
+        stock,
+        description: form.description.trim(),
+        images: form.images,
+      };
+      if (editing) await productService.updateProduct(editing._id, payload);
+      else await productService.createProduct(payload);
       setShowModal(false);
-      loadProducts();
+      await loadProducts();
+      toast.success(editing ? "Product updated" : "Product added");
+    } catch (err) {
+      setFormError(errorMessage(err, "The product could not be saved. Your changes are still here."));
     } finally {
       setSaving(false);
     }
-  };
+  }
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Product Management</h1>
-          <p className="text-muted-foreground">Manage your product catalog</p>
-        </div>
-        <Button variant="primary" onClick={openAdd}>
-          <Plus className="w-4 h-4 mr-2" />
-          Add Product
-        </Button>
-      </div>
-
-      {/* Search & Filters */}
-      <div className="bg-white rounded-xl border border-border p-4">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-            <input
-              type="search"
-              placeholder="Search products..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-muted rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="px-4 py-2 bg-white border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="">All Categories</option>
-            {categories.map((c) => (
-              <option key={c._id} value={c._id}>{c.name}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* Products Table */}
-      <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="px-6 py-4 text-left text-sm font-medium">Product</th>
-                <th className="px-6 py-4 text-left text-sm font-medium">Category</th>
-                <th className="px-6 py-4 text-left text-sm font-medium">Discount</th>
-                <th className="px-6 py-4 text-left text-sm font-medium">Price</th>
-                <th className="px-6 py-4 text-left text-sm font-medium">Stock</th>
-                <th className="px-6 py-4 text-left text-sm font-medium">Rating</th>
-                <th className="px-6 py-4 text-left text-sm font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {isLoading ? (
-                <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
-              ) : products.map((product) => (
-                <tr key={product._id} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <img
-                        src={product.images[0] || "/placeholder.png"}
-                        alt={product.name}
-                        className="w-12 h-12 rounded-lg object-cover"
-                      />
-                      <div>
-                        <div className="font-medium">{product.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {product.numReviews} reviews
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">{product.category?.name}</td>
-                  <td className="px-6 py-4">{product.discount != null ? `${product.discount}%` : "—"}</td>
-                  <td className="px-6 py-4 font-medium">{formatCurrency(product.price)}</td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${
-                        product.stock > 0
-                          ? "bg-green-100 text-green-700"
-                          : "bg-red-100 text-red-700"
-                      }`}
-                    >
-                      {product.stock > 0 ? `In Stock (${product.stock})` : "Out of Stock"}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-1">
-                      <span className="font-medium">{product.ratings.toFixed(1)}</span>
-                      <span className="text-muted-foreground">/5</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <Link to={`/products/${product._id}`} className="p-2 hover:bg-accent rounded-lg transition-colors block">
-                        <Eye className="w-4 h-4" />
-                      </Link>
-                      <button
-                        className="p-2 hover:bg-accent rounded-lg transition-colors"
-                        onClick={() => openEdit(product)}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        className="p-2 hover:bg-destructive/10 text-destructive rounded-lg transition-colors"
-                        onClick={() => handleDelete(product._id)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Add/Edit Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-border">
-              <h2 className="text-2xl font-bold">
-                {editingProduct ? "Edit Product" : "Add New Product"}
-              </h2>
-            </div>
-
-            <form className="p-6 space-y-6" onSubmit={handleSubmit(handleSubmit2)}>
-              <div>
-                <label className="block mb-2 font-medium">Product Name</label>
-                <input
-                  type="text"
-                  placeholder="Enter product name"
-                  {...register("name")}
-                  className={`w-full px-4 py-2 bg-input-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring ${errors.name ? "border-destructive" : "border-input"}`}
-                />
-                {errors.name ? <p className="text-destructive text-xs mt-1">{errors.name.message}</p> : <p className="text-muted-foreground text-xs mt-1">Min 2 characters</p>}
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block mb-2 font-medium">Category</label>
-                  <select
-                    {...register("category")}
-                    className={`w-full px-4 py-2 bg-input-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring ${errors.category ? "border-destructive" : "border-input"}`}
-                  >
-                    <option value="">Select category</option>
-                    {categories.map((c) => (
-                      <option key={c._id} value={c._id}>{c.name}</option>
-                    ))}
-                  </select>
-                  {errors.category && <p className="text-destructive text-xs mt-1">{errors.category.message}</p>}
-                </div>
-                <div>
-                  <label className="block mb-2 font-medium">Price</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    {...register("price", { valueAsNumber: true })}
-                    className={`w-full px-4 py-2 bg-input-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring ${errors.price ? "border-destructive" : "border-input"}`}
-                  />
-                  {errors.price ? <p className="text-destructive text-xs mt-1">{errors.price.message}</p> : <p className="text-muted-foreground text-xs mt-1">e.g. 9.99 (greater than 0)</p>}
-                </div>
-                <div>
-                  <label className="block mb-2 font-medium">Discount %</label>
-                  <input
-                    type="number"
-                    step="1"
-                    min={0}
-                    max={100}
-                    placeholder="0"
-                    {...register("discount", { valueAsNumber: true })}
-                    className={`w-full px-4 py-2 bg-input-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring ${errors.discount ? "border-destructive" : "border-input"}`}
-                  />
-                  {errors.discount ? <p className="text-destructive text-xs mt-1">{errors.discount.message}</p> : <p className="text-muted-foreground text-xs mt-1">Percentage 0–100</p>}
-                </div>
-              </div>
-
-              <div>
-                <label className="block mb-2 font-medium">Stock</label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  {...register("stock", { valueAsNumber: true })}
-                  className={`w-full px-4 py-2 bg-input-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring ${errors.stock ? "border-destructive" : "border-input"}`}
-                />
-                {errors.stock ? <p className="text-destructive text-xs mt-1">{errors.stock.message}</p> : <p className="text-muted-foreground text-xs mt-1">Whole number ≥ 0</p>}
-              </div>
-
-              <div>
-                <label className="block mb-2 font-medium">Description</label>
-                <textarea
-                  rows={4}
-                  placeholder="Enter product description"
-                  {...register("description")}
-                  className="w-full px-4 py-2 bg-input-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-                />
-              </div>
-
-              <div className="flex gap-4 pt-4">
-                <Button variant="primary" className="flex-1" disabled={saving}>
-                  {saving ? "Saving..." : editingProduct ? "Update Product" : "Add Product"}
-                </Button>
-                <Button variant="outline" className="flex-1" type="button" onClick={() => setShowModal(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
+  const actions = (product: Product) => (
+    <div className="flex items-center gap-1">
+      {product.isActive === false ? (
+        <button
+          aria-label={`Restore ${product.name}`}
+          title="Restore to store"
+          disabled={busyId === product._id}
+          className={actionClass}
+          onClick={() => void restoreProduct(product)}
+        >
+          <RotateCcw className="h-4 w-4" />
+        </button>
+      ) : (
+        <Link aria-label={`View ${product.name} in the store`} to={`/products/${product._id}`} className={actionClass}>
+          <ArrowUpRight className="h-4 w-4" />
+        </Link>
+      )}
+      <button aria-label={`Edit ${product.name}`} className={actionClass} onClick={() => openEditor(product)}>
+        <Pencil className="h-4 w-4" />
+      </button>
+      {product.isActive !== false && (
+        <button
+          aria-label={`Remove ${product.name}`}
+          disabled={busyId === product._id}
+          className={`${actionClass} hover:!bg-red-50 hover:!text-red-600`}
+          onClick={() => void removeProduct(product)}
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
       )}
     </div>
   );
+
+  const field = (key: Exclude<keyof ProductForm, "images">) => ({
+    value: form[key],
+    onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+      setForm((current) => ({ ...current, [key]: event.target.value })),
+  });
+  const preview =
+    Number(form.price) > 0
+      ? getProductPricing({ price: Number(form.price), originalPrice: Number(form.originalPrice) || Number(form.price) })
+      : null;
+
+  return (
+    <div className="space-y-6">
+      <PageHeading
+        title="Products"
+        description="A well-kept catalog makes shopping easier. Manage availability, details and the price customers pay."
+        action={
+          <Button onClick={() => openEditor()}>
+            <Plus className="h-4 w-4" />
+            Add product
+          </Button>
+        }
+      />
+
+      <div className={`${panelClass} flex flex-col gap-3 p-4 md:flex-row md:items-center`}>
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
+          <input
+            aria-label="Search products"
+            type="search"
+            placeholder="Search your catalog"
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(1);
+            }}
+            className={`${inputClass} pl-10`}
+          />
+        </div>
+        <select
+          aria-label="Filter by category"
+          value={category}
+          onChange={(event) => {
+            setCategory(event.target.value);
+            setPage(1);
+          }}
+          className={`${inputClass} md:max-w-52`}
+        >
+          <option value="">All categories</option>
+          {categories.map((item) => (
+            <option key={item._id} value={item._id}>
+              {item.name}
+            </option>
+          ))}
+        </select>
+        <label className="flex min-h-11 shrink-0 cursor-pointer items-center gap-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            checked={showRemoved}
+            onChange={(event) => {
+              setShowRemoved(event.target.checked);
+              setPage(1);
+            }}
+            className="h-4 w-4 accent-teal-600"
+          />
+          Include removed
+        </label>
+      </div>
+
+      {error && <ErrorNotice message={error} retry={loadProducts} />}
+
+      <section className={`${panelClass} overflow-hidden`}>
+        {isLoading ? (
+          <EmptyState loading />
+        ) : error ? null : products.length === 0 ? (
+          <EmptyState
+            title="No products found"
+            description={
+              search || category
+                ? "Try another search or choose a different category."
+                : "Add your first product to start building your catalog."
+            }
+          />
+        ) : (
+          <>
+            <ul className="divide-y divide-slate-100 xl:hidden">
+              {products.map((product) => (
+                <li key={product._id} className={`p-4 ${product.isActive === false ? "bg-slate-50/70" : ""}`}>
+                  <div className="flex items-start gap-3">
+                    <Thumb product={product} />
+                    <div className="min-w-0 flex-1">
+                      <p className="break-words text-sm font-semibold">{product.name}</p>
+                      <p className="mt-1 text-xs text-slate-500">{product.category?.name || "Category unavailable"}</p>
+                      <p className="mt-2 text-sm">
+                        <Price product={product} />
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <StockBadge product={product} />
+                    {actions(product)}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className="hidden overflow-x-auto xl:block">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-xs text-slate-500">
+                  <tr>
+                    {["Product", "Selling price", "Inventory", "Rating", "Actions"].map((heading) => (
+                      <th key={heading} className="px-5 py-4 text-left font-medium">
+                        {heading}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {products.map((product) => (
+                    <tr key={product._id} className={product.isActive === false ? "bg-slate-50/70" : "hover:bg-slate-50/50"}>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <Thumb product={product} />
+                          <div className="max-w-72">
+                            <p className="font-semibold">{product.name}</p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {product.category?.name || "Category unavailable"}
+                              {product.sellerEmail && ` · ${product.sellerEmail}`}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <Price product={product} />
+                      </td>
+                      <td className="px-5 py-4">
+                        <StockBadge product={product} />
+                      </td>
+                      <td className="px-5 py-4">
+                        <p className="font-medium">
+                          {product.numReviews ? `${Number(product.ratings || 0).toFixed(1)} / 5` : "No reviews"}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-400">{product.numReviews || 0} reviews</p>
+                      </td>
+                      <td className="px-5 py-4">{actions(product)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+        {!error && <Pagination page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} loading={isLoading} />}
+      </section>
+
+      <Dialog open={showModal} onOpenChange={(open) => !saving && !uploading && setShowModal(open)}>
+        <DialogContent className="max-h-[92dvh] overflow-y-auto rounded-2xl bg-white sm:max-w-2xl">
+          <DialogTitle className="pr-8 text-xl">{editing ? "Edit product" : "Add a product"}</DialogTitle>
+          <DialogDescription>Clear details and accurate inventory help customers shop with confidence.</DialogDescription>
+          <form onSubmit={save} className="space-y-5" noValidate>
+            {formError && <ErrorNotice message={formError} />}
+            <div>
+              <label htmlFor="product-name" className="mb-2 block text-sm font-medium">
+                Product name
+              </label>
+              <input id="product-name" required minLength={2} maxLength={200} className={inputClass} {...field("name")} />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label htmlFor="product-category" className="mb-2 block text-sm font-medium">
+                  Category
+                </label>
+                <select id="product-category" required className={inputClass} {...field("category")}>
+                  <option value="">Choose a category</option>
+                  {categories.map((item) => (
+                    <option key={item._id} value={item._id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+                {categories.length === 0 && <p className="mt-2 text-xs text-amber-700">Create a category before adding products.</p>}
+              </div>
+              <div>
+                <label htmlFor="product-stock" className="mb-2 block text-sm font-medium">
+                  Stock available
+                </label>
+                <input
+                  id="product-stock"
+                  required
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  max={100000}
+                  step={1}
+                  className={inputClass}
+                  {...field("stock")}
+                />
+              </div>
+              <div>
+                <label htmlFor="product-price" className="mb-2 block text-sm font-medium">
+                  Selling price (₹)
+                </label>
+                <input
+                  id="product-price"
+                  required
+                  type="number"
+                  inputMode="decimal"
+                  min={0.01}
+                  max={1000000}
+                  step={0.01}
+                  className={inputClass}
+                  {...field("price")}
+                />
+                <p className="mt-2 text-xs text-slate-500">The final price your customer pays.</p>
+              </div>
+              <div>
+                <label htmlFor="product-original-price" className="mb-2 block text-sm font-medium">
+                  Compare-at price (₹) <span className="font-normal text-slate-400">optional</span>
+                </label>
+                <input
+                  id="product-original-price"
+                  type="number"
+                  inputMode="decimal"
+                  min={0.01}
+                  max={1000000}
+                  step={0.01}
+                  className={inputClass}
+                  {...field("originalPrice")}
+                />
+                <p className="mt-2 text-xs text-slate-500">
+                  {preview && preview.discount > 0 ? `Shown as ${preview.discount}% off.` : "A higher original price shows the savings."}
+                </p>
+              </div>
+            </div>
+            <div>
+              <label htmlFor="product-description" className="mb-2 block text-sm font-medium">
+                Description
+              </label>
+              <textarea
+                id="product-description"
+                required
+                minLength={10}
+                rows={4}
+                className={`${inputClass} resize-y`}
+                {...field("description")}
+              />
+            </div>
+            <div>
+              <p className="mb-2 text-sm font-medium">Photos</p>
+              <ImageUploader
+                images={form.images}
+                onChange={(images: string[]) => setForm((current) => ({ ...current, images }))}
+                max={12}
+                onUploadingChange={setUploading}
+              />
+              <div className="mt-3 flex gap-2">
+                <div className="relative flex-1">
+                  <Link2 className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
+                  <input
+                    aria-label="Image link"
+                    type="url"
+                    inputMode="url"
+                    placeholder="Or paste an image link (https://…)"
+                    value={imageUrl}
+                    onChange={(event) => setImageUrl(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        addImageUrl();
+                      }
+                    }}
+                    className={`${inputClass} pl-9`}
+                  />
+                </div>
+                <Button type="button" variant="outline" onClick={addImageUrl} disabled={!imageUrl.trim()}>
+                  Add
+                </Button>
+              </div>
+              <p className="mt-2 text-xs text-slate-500">The first photo is the cover.</p>
+            </div>
+            <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+              <Button variant="outline" disabled={saving} onClick={() => setShowModal(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={saving || uploading || categories.length === 0}>
+                <Package className="h-4 w-4" />
+                {saving ? "Saving…" : uploading ? "Uploading…" : editing ? "Save changes" : "Add product"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 }
-
-

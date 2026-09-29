@@ -8,10 +8,10 @@ const {
   deleteProduct,
   addReview,
 } = require("../controllers/productController");
-const { protect, authorize } = require("../middleware/authMiddleware");
+const { protect, optionalAuth } = require("../middleware/authMiddleware");
 const { productValidator } = require("../validators/productValidator");
 
-router.get("/", getProducts);
+router.get("/", optionalAuth, getProducts);
 router.get("/:id", getProduct);
 router.post("/", protect, productValidator, createProduct);
 router.put("/:id", protect, updateProduct);
